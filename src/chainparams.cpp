@@ -107,12 +107,12 @@ public:
         consensus.nEquihashN = N;
         consensus.nEquihashK = K;
         consensus.nPowAveragingWindow = 17;
-        consensus.nMaxFutureBlockTime = 7 * 60; // 7 mins
+        consensus.nMaxFutureBlockTime = 70; // 70 sec
 
         assert(maxUint/UintToArith256(consensus.powLimit) >= consensus.nPowAveragingWindow);
         consensus.nPowMaxAdjustDown = 32; // 32% adjustment down
         consensus.nPowMaxAdjustUp = 16; // 16% adjustment up
-        consensus.nPowTargetSpacing = 1 * 60;
+        consensus.nPowTargetSpacing = 10;
         consensus.nPreBlossomPowTargetSpacing = Consensus::PRE_BLOSSOM_POW_TARGET_SPACING;
         consensus.nPostBlossomPowTargetSpacing = Consensus::POST_BLOSSOM_POW_TARGET_SPACING;
         consensus.nPowAllowMinDifficultyBlocksAfterHeight = boost::none;
