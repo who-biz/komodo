@@ -439,6 +439,49 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(co
     }
 }
 
+CTransferDestination CTransferDestination::GetAuxDest(int destNum) const
+{
+    CTransferDestination retVal;
+    if (destNum < auxDests.size())
+    {
+        ::FromVector(auxDests[destNum], retVal);
+        if (retVal.type & FLAG_DEST_AUX || retVal.auxDests.size())
+        {
+            retVal.type = DEST_INVALID;
+        }
+        // no gateways or flags, only simple destinations work
+        switch (retVal.type)
+        {
+            case DEST_ID:
+            case DEST_PK:
+            case DEST_PKH:
+            case DEST_ETH:
+            case DEST_SH:
+                break;
+            default:
+                retVal.type = DEST_INVALID;
+        }
+    }
+    return retVal;
+}
+
+void CTransferDestination::SetAuxDest(const CTransferDestination &auxDest, int destNum)
+{
+    if (auxDests.size() == destNum)
+    {
+        auxDests.push_back(::AsVector(auxDest));
+    }
+    else if (auxDests.size() > destNum)
+    {
+        auxDests[destNum] = ::AsVector(auxDest);
+    }
+    if (auxDests.size())
+    {
+        type |= FLAG_DEST_AUX;
+    }
+}
+
+
 uint160 DecodeCurrencyName(std::string currencyStr)
 {
     uint160 retVal;
@@ -540,10 +583,10 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             {
                 gatewayID = GetID();
             }
-            uint160 parent = GetID();
-            std::string cleanGatewayName = CleanName(gatewayConverterName, parent, true);
-            uint160 converterID = GetID(cleanGatewayName, parent);
-            if (parent != GetID())
+            uint160 converterParent = GetID();
+            std::string cleanGatewayName = CleanName(gatewayConverterName, converterParent, true);
+            uint160 converterID = GetID(cleanGatewayName, converterParent);
+            if (converterParent != GetID())
             {
                 LogPrintf("%s: invalid name for gateway converter %s\n", __func__, cleanGatewayName.c_str());
                 nVersion = PBAAS_VERSION_INVALID;
@@ -551,9 +594,23 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             }
         }
 
-        if (IsPBaaSChain() || IsGateway() || IsPBaaSConverter())
+        if (IsPBaaSChain() || IsGateway() || IsGatewayConverter())
         {
             gatewayConverterIssuance = AmountFromValueNoErr(find_value(obj, "gatewayconverterissuance"));
+            if (IsGatewayConverter())
+            {
+                std::string gatewayNameID = uni_get_str(find_value(obj, "gateway"));
+                if (!gatewayNameID.empty())
+                {
+                    gatewayID = DecodeCurrencyName(gatewayNameID);
+
+                    if (gatewayID.IsNull() || gatewayID != parent)
+                    {
+                        nVersion = PBAAS_VERSION_INVALID;
+                        return;
+                    }
+                }
+            }
         }
 
         notarizationProtocol = (ENotarizationProtocol)uni_get_int(find_value(obj, "notarizationprotocol"), (int32_t)NOTARIZATION_AUTO);
@@ -609,6 +666,16 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
         UniValue minPreconvertArr = find_value(obj, "minpreconversion");
         UniValue maxPreconvertArr = find_value(obj, "maxpreconversion");
         UniValue initialContributionArr = find_value(obj, "initialcontributions");
+
+        if ((options & (OPTION_FRACTIONAL | OPTION_GATEWAY | OPTION_PBAAS | OPTION_TOKEN)) == OPTION_TOKEN &&
+            !(currencyArr.isArray() && currencyArr.size()) &&
+            maxPreconvertArr.isArray() &&
+            maxPreconvertArr.size() == 1 &&
+            !uni_get_int(maxPreconvertArr[0]))
+        {
+            currencyArr = UniValue(UniValue::VARR);
+            currencyArr.push_back(EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)));
+        }
 
         if (currencyArr.isArray() && currencyArr.size())
         {
@@ -920,6 +987,14 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
         {
             try
             {
+                if (name == "VRSC" && parent.IsNull())
+                {
+                    initialBits = UintToArith256(uint256S("00000f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f")).GetCompact();
+                }
+                else
+                {
+                    initialBits = UintToArith256(uint256S("000000ff0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f")).GetCompact();
+                }
                 uint32_t newInitialBits = UintToArith256(uint256S(uni_get_str(find_value(obj, "initialtarget")))).GetCompact();
                 if (newInitialBits)
                 {
@@ -1024,7 +1099,7 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
             UniValue uniEra1(UniValue::VOBJ);
             uniEra1.pushKV("reward", 1200000000);
             uniEra1.pushKV("decay", 0);
-            uniEra1.pushKV("halving", 1044011);
+            uniEra1.pushKV("halving", 1011011);
             uniEra1.pushKV("eraend", 0);
             uniEras.push_back(uniEra1);
 

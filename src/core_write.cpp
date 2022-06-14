@@ -315,7 +315,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
 
     if (!gatewayID.IsNull())
     {
-        obj.push_back(Pair("gatewayid", gatewayID.GetHex()));
+        obj.push_back(Pair("gateway", EncodeDestination(CIdentityID(gatewayID))));
     }
 
     if (contributions.size())
@@ -328,7 +328,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("initialcontributions", initialContributionArr));
     }
 
-    if (IsGateway() || IsPBaaSConverter() || IsPBaaSChain())
+    if (IsGateway() || IsGatewayConverter() || IsPBaaSChain())
     {
         obj.push_back(Pair("gatewayconverterissuance", ValueFromAmount(gatewayConverterIssuance)));
     }
@@ -886,7 +886,7 @@ UniValue CReserveDeposit::ToUniValue() const
 UniValue CTransferDestination::ToUniValue() const
 {
     UniValue destVal = UniValue(UniValue::VOBJ);
-    destVal.push_back(Pair("type", type));
+    uint8_t newType = type;
 
     switch (TypeNoFlags())
     {
@@ -939,8 +939,36 @@ UniValue CTransferDestination::ToUniValue() const
             break;
 
         default:
-            destVal.push_back(Pair("nodestination", ""));
+            destVal.push_back(Pair("undefined", ""));
             break;
+    }
+    if ((type & FLAG_DEST_AUX))
+    {
+        if (auxDests.size())
+        {
+            UniValue auxDestsUni(UniValue::VARR);
+            for (auto &oneVec : auxDests)
+            {
+                CTransferDestination oneDest;
+                bool success = true;
+                ::FromVector(oneVec, oneDest, &success);
+                // can't nest aux destinations
+                if (!success || (oneDest.type & FLAG_DEST_AUX))
+                {
+                    newType = DEST_INVALID;
+                    break;
+                }
+                auxDestsUni.push_back(oneDest.ToUniValue());
+            }
+            if (newType != DEST_INVALID)
+            {
+                destVal.push_back(Pair("auxdests", auxDestsUni));
+            }
+        }
+        else
+        {
+            newType &= ~FLAG_DEST_AUX;
+        }
     }
     if (type & FLAG_DEST_GATEWAY)
     {
@@ -951,6 +979,7 @@ UniValue CTransferDestination::ToUniValue() const
         destVal.push_back(Pair("gateway", EncodeDestination(CIdentityID(gatewayID))));
         destVal.push_back(Pair("fees", ValueFromAmount(fees)));
     }
+    destVal.push_back(Pair("type", newType));
     return destVal;
 }
 
@@ -1207,6 +1236,47 @@ UniValue CMMRProof::ToUniValue() const
     return retObj;
 }
 
+UniValue CNameReservation::ToUniValue() const
+{
+    UniValue ret(UniValue::VOBJ);
+    ret.push_back(Pair("name", name));
+    ret.push_back(Pair("salt", salt.GetHex()));
+    ret.push_back(Pair("referral", referral.IsNull() ? "" : EncodeDestination(referral)));
+
+    if (_IsVerusActive())
+    {
+        if (boost::to_lower_copy(name) == VERUS_CHAINNAME)
+        {
+            ret.push_back(Pair("parent", ""));
+        }
+        else
+        {
+            ret.push_back(Pair("parent", EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID()))));
+        }
+        ret.push_back(Pair("nameid", EncodeDestination(DecodeDestination(name + "@"))));
+    }
+    else
+    {
+        ret.push_back(Pair("parent", EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID()))));
+        ret.push_back(Pair("nameid", EncodeDestination(DecodeDestination(name + "." + ConnectedChains.ThisChain().name + "@"))));
+    }
+
+    return ret;
+}
+
+UniValue CAdvancedNameReservation::ToUniValue() const
+{
+    UniValue ret(UniValue::VOBJ);
+    ret.push_back(Pair("version", (uint64_t)version));
+    ret.push_back(Pair("name", name));
+    ret.push_back(Pair("parent", EncodeDestination(CIdentityID(parent))));
+    ret.push_back(Pair("salt", salt.GetHex()));
+    ret.push_back(Pair("referral", referral.IsNull() ? "" : EncodeDestination(referral)));
+    uint160 ParentID = parent;
+    ret.push_back(Pair("nameid", EncodeDestination(CIdentity::GetID(name, ParentID))));
+    return ret;
+}
+
 void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fIncludeHex, bool fIncludeAsm)
 {
     txnouttype type;
@@ -1334,9 +1404,33 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 break;
             }
 
-            case EVAL_RESERVE_EXCHANGE:
+            case EVAL_IDENTITY_RESERVATION:
             {
-                out.push_back(Pair("invalidreserveexchangout", "invalid"));
+                CNameReservation ar;
+
+                if (p.vData.size() && (ar = CNameReservation(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("identityreservation", ar.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("identityreservation", "invalid"));
+                }
+                break;
+            }
+
+            case EVAL_IDENTITY_ADVANCEDRESERVATION:
+            {
+                CAdvancedNameReservation anr;
+
+                if (p.vData.size() && (anr = CAdvancedNameReservation(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("identityreservation", anr.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("identityreservation", "invalid"));
+                }
                 break;
             }
 
@@ -1423,10 +1517,6 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 }
                 break;
             }
-
-            case EVAL_IDENTITY_RESERVATION:
-                out.push_back(Pair("identityreservation", ""));
-                break;
 
             case EVAL_STAKEGUARD:
                 out.push_back(Pair("stakeguard", ""));

@@ -190,13 +190,13 @@ public:
     CIdentityID referral;
     uint256 salt;
 
-    CAdvancedNameReservation() : version(VERSION_CURRENT) {}
+    CAdvancedNameReservation(uint32_t Version=VERSION_CURRENT) : version(Version) {}
     CAdvancedNameReservation(const std::string &Name, const uint160 &Parent, const CIdentityID &Referral, const uint256 &Salt, uint32_t Version=VERSION_CURRENT) :
         version(Version), name(Name.size() > MAX_NAME_SIZE ? std::string(Name.begin(), Name.begin() + MAX_NAME_SIZE) : Name), parent(Parent), referral(Referral), salt(Salt) {}
 
     CAdvancedNameReservation(const UniValue &uni, const uint160 &Parent=ASSETCHAINS_CHAINID)
     {
-        uint160 dummy;
+        version = uni_get_int(find_value(uni, "version"), VERSION_CURRENT);
         parent = DecodeCurrencyName(uni_get_str(find_value(uni, "parent"), EncodeDestination(CIdentityID(Parent))));
         name = CleanName(uni_get_str(find_value(uni, "name")), parent);
         salt = uint256S(uni_get_str(find_value(uni, "salt")));
@@ -351,9 +351,9 @@ public:
                  minSigs <= 13));
     }
 
-    bool IsPrimaryMutation(const CPrincipal &newPrincipal) const
+    bool IsPrimaryMutation(const CPrincipal &newPrincipal, uint32_t currentVersion) const // post PBaaS, version is checked elsewhere
     {
-        if (nVersion != newPrincipal.nVersion ||
+        if ((currentVersion < VERSION_PBAAS && newPrincipal.nVersion != nVersion) ||
             minSigs != minSigs ||
             primaryAddresses.size() != newPrincipal.primaryAddresses.size())
         {
@@ -725,8 +725,9 @@ public:
     bool IsPrimaryMutation(const CIdentity &newIdentity, uint32_t height) const
     {
         auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
-        bool isRevokedExempt = nSolVersion >= CActivationHeight::ACTIVATE_VERUSVAULT && newIdentity.IsRevoked();
-        if (CPrincipal::IsPrimaryMutation(newIdentity) ||
+        bool isPBaaS = nSolVersion >= CActivationHeight::ACTIVATE_PBAAS;
+        bool isRevokedExempt = isPBaaS || nSolVersion >= CActivationHeight::ACTIVATE_VERUSVAULT && newIdentity.IsRevoked();
+        if (CPrincipal::IsPrimaryMutation(newIdentity, isPBaaS ? VERSION_PBAAS : VERSION_VAULT) ||
             (nSolVersion >= CActivationHeight::ACTIVATE_IDCONSENSUS2 && name != newIdentity.name && GetID() == newIdentity.GetID()) ||
             contentMap != newIdentity.contentMap ||
             privateAddresses != newIdentity.privateAddresses ||
@@ -884,8 +885,8 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
 bool PrecheckIdentityCommitment(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool ValidateIdentityReservation(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
+bool ValidateAdvancedNameReservation(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled);
 bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
-bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height, int referralLevels, int64_t referralAmount);
 bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 bool IsIdentityInput(const CScript &scriptSig);
 bool ValidateQuantumKeyOut(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled);

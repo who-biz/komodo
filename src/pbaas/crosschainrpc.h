@@ -175,13 +175,16 @@ public:
         DEST_ETH = 9,
         DEST_RAW = 10,
         LAST_VALID_TYPE_NO_FLAGS = 10,
+        FLAG_DEST_AUX = 64,
         FLAG_DEST_GATEWAY = 128,
+        FLAG_MASK = FLAG_DEST_AUX + FLAG_DEST_GATEWAY
     };
     uint8_t type;
     std::vector<unsigned char> destination;
     uint160 gatewayID;                      // gateway fee currency/systemID
     uint160 gatewayCode;                    // code for function to execute on the gateway
     int64_t fees;                           // amount for transfer fees this is holding
+    std::vector<std::vector<unsigned char>> auxDests;
 
     CTransferDestination() : type(DEST_INVALID), fees(0) {}
     CTransferDestination(const UniValue &uni);
@@ -218,12 +221,35 @@ public:
             READWRITE(gatewayCode);
             READWRITE(fees);
         }
+        if (type & FLAG_DEST_AUX)
+        {
+            READWRITE(auxDests);
+        }
     }
 
     bool HasGatewayLeg() const
     {
         return (type & FLAG_DEST_GATEWAY) && !gatewayID.IsNull();
     }
+
+    int AuxDestCount() const
+    {
+        if (type & FLAG_DEST_AUX)
+        {
+            return auxDests.size();
+        }
+        return 0;
+    }
+
+    void ClearAuxDests()
+    {
+        auxDests.clear();
+        type &= ~FLAG_DEST_AUX;
+    }
+
+    CTransferDestination GetAuxDest(int destNum) const;
+
+    void SetAuxDest(const CTransferDestination &auxDest, int destNum);
 
     void SetGatewayLeg(const uint160 &GatewayID=uint160(), int64_t Fees=0, const uint160 &vdxfCode=uint160())
     {
@@ -243,12 +269,26 @@ public:
 
     int TypeNoFlags() const
     {
-        return type & ~FLAG_DEST_GATEWAY;
+        return type & ~FLAG_MASK;
     }
 
     bool IsValid() const
     {
-        return TypeNoFlags() != DEST_INVALID &&
+        // verify aux dests
+        bool valid = (((type & FLAG_DEST_AUX) && auxDests.size()) || (!(type & FLAG_DEST_AUX) && !auxDests.size()));
+        if (valid && auxDests.size())
+        {
+            for (int i = 0; i < auxDests.size(); i++)
+            {
+                if (!GetAuxDest(i).IsValid())
+                {
+                    valid = false;
+                    break;
+                }
+            }
+        }
+        return valid &&
+               TypeNoFlags() != DEST_INVALID &&
                TypeNoFlags() <= LAST_VALID_TYPE_NO_FLAGS &&
                ((!(type & FLAG_DEST_GATEWAY) && gatewayID.IsNull()) || !gatewayID.IsNull());
     }
@@ -370,15 +410,22 @@ public:
         PBAAS_SYSTEM_LAUNCH_FEE = 1000000000000, // default 10000 to register and launch a PBaaS chain
         CURRENCY_IMPORT_FEE = 10000000000,  // default 100 to import a currency
         IDENTITY_REGISTRATION_FEE = 10000000000, // 100 to register an identity
-        IDENTITY_IMPORT_FEE = 2000000,      // .20 in native currency to import an identity
+        IDENTITY_IMPORT_FEE = 100000000,    // 1 in native currency to import an identity
         MIN_RESERVE_CONTRIBUTION = 1000000, // 0.01 minimum per reserve contribution minimum
         MIN_BILLING_PERIOD = 960,           // 16 hour minimum billing period for notarization, typically expect days/weeks/months
         MIN_CURRENCY_LIFE = 480,            // 8 hour minimum lifetime, which gives 8 hours of minimum billing to notarize conclusion
         DEFAULT_OUTPUT_VALUE = 0,           // 0 VRSC default output value
         DEFAULT_ID_REFERRAL_LEVELS = 3,
+        MAX_ID_REFERRAL_LEVELS = 5,
         MAX_NAME_LEN = 64,
         MAX_STARTUP_NODES = 5,
-        DEFAULT_START_TARGET = 0x1e01e1e1
+        DEFAULT_START_TARGET = 0x1e01e1e1,
+        MAX_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK = 20,
+        MAX_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK = 20,
+        MAX_TRANSFER_EXPORTS_PER_BLOCK = 200,
+        MAX_ETH_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK = 1,
+        MAX_ETH_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK = 0,
+        MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK = 50
     };
 
     enum ECurrencyOptions
@@ -387,12 +434,13 @@ public:
         OPTION_ID_ISSUANCE = 2,             // clear is permissionless, if set, IDs may only be created by controlling ID
         OPTION_ID_STAKING = 4,              // all IDs on chain stake equally, rather than value-based staking
         OPTION_ID_REFERRALS = 8,            // if set, this chain supports referrals
-        OPTION_ID_REFERRALREQUIRED = 0x10,  // if set, this chain requires referrals
+        OPTION_ID_REFERRALREQUIRED = 0x10,  // if set, this chain requires a referrer to approve an ID issuance
         OPTION_TOKEN = 0x20,                // if set, this is a token, not a native currency
         OPTION_SINGLECURRENCY = 0x40,       // for PBaaS chains or gateways to potentially restrict to single currency
         OPTION_GATEWAY = 0x80,              // if set, this routes external currencies
         OPTION_PBAAS = 0x100,               // this is a PBaaS chain definition
-        OPTION_PBAAS_CONVERTER = 0x200,     // this means that for a specific PBaaS gateway, this is the default converter and will publish prices
+        OPTION_GATEWAY_CONVERTER = 0x200,   // this means that for a specific PBaaS gateway, this is the default converter and will publish prices
+        OPTION_GATEWAY_NAMECONTROLLER = 0x400, // when not set on a gateway, top level ID and currency registration happen on launch chain 
     };
 
     // these should be pluggable in function
@@ -474,7 +522,7 @@ public:
     // costs to register and import IDs
     int64_t idRegistrationFees;             // normal cost of ID registration in PBaaS native currency, for gateways, current native
     int32_t idReferralLevels;               // number of referral levels to divide among
-    int64_t idImportFees;                   // cost to import currency to this system, INT64_MAX excludes ID import beyond launch
+    int64_t idImportFees;                   // for gateway/system - cost to import currency to this system, for fractional - pricing currency index
 
     // costs to register and import currencies
     int64_t currencyRegistrationFee;        // cost in native currency to register a currency on this system
@@ -612,10 +660,7 @@ public:
         READWRITE(notarizationProtocol);
         READWRITE(proofProtocol);
         READWRITE(nativeCurrencyID);
-        if (nativeCurrencyID.IsValid())
-        {
-            READWRITE(gatewayID);
-        }
+        READWRITE(gatewayID);
         READWRITE(VARINT(startBlock));
         READWRITE(VARINT(endBlock));
         READWRITE(initialFractionalSupply);
@@ -699,6 +744,35 @@ public:
     {
         return (IsGateway() ? gatewayID : systemID);
     }
+
+    uint160 FeePricingCurrency() const
+    {
+        if (!IsFractional() || idImportFees < 0 || idImportFees >= currencies.size())
+        {
+            return GetID();
+        }
+        else
+        {
+            return currencies[idImportFees];
+        }
+    }
+
+    int32_t MaxTransferExportCount() const
+    {
+        return proofProtocol == PROOF_ETHNOTARIZATION ? MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK : MAX_TRANSFER_EXPORTS_PER_BLOCK;
+    }
+
+    int32_t MaxCurrencyDefinitionExportCount() const
+    {
+        return proofProtocol == PROOF_ETHNOTARIZATION ? MAX_ETH_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK : MAX_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK;
+    }
+
+    int32_t MaxIdentityDefinitionExportCount() const
+    {
+        return proofProtocol == PROOF_ETHNOTARIZATION ? MAX_ETH_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK : MAX_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK;
+    }
+
+    static bool IsValidDefinitionImport(const CCurrencyDefinition &sourceSystem, const CCurrencyDefinition &destSystem, const uint160 &nameParent, uint32_t height);
 
     bool IsValidTransferDestinationType(int destinationType) const
     {
@@ -861,7 +935,8 @@ public:
 
     bool IsValid() const
     {
-        return (nVersion != PBAAS_VERSION_INVALID) && 
+        return (nVersion != PBAAS_VERSION_INVALID) &&
+                idReferralLevels <= MAX_ID_REFERRAL_LEVELS &&
                 name.size() > 0 && 
                 name.size() <= (KOMODO_ASSETCHAIN_MAXLEN - 1) &&
                 std::max({rewards.size(), rewardsDecay.size(), halving.size(), eraEnd.size()}) <= ASSETCHAINS_MAX_ERAS;
@@ -901,9 +976,15 @@ public:
         return !(ChainOptions() & OPTION_SINGLECURRENCY);
     }
 
-    bool IsPBaaSConverter() const
+    bool IsGatewayConverter() const
     {
-        return ChainOptions() & OPTION_PBAAS_CONVERTER;
+        // all PBaaS chains are name controllers
+        return ChainOptions() & OPTION_GATEWAY_CONVERTER;
+    }
+
+    bool IsNameController() const
+    {
+        return ChainOptions() & (OPTION_PBAAS | OPTION_GATEWAY_NAMECONTROLLER);
     }
 
     void SetToken(bool isToken)

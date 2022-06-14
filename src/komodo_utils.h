@@ -1443,7 +1443,7 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
                 fprintf(fp,"rpcuser=user%u\nrpcpassword=pass%s\nrpcport=%u\nserver=1\ntxindex=1\nrpcworkqueue=256\nrpcallowip=127.0.0.1\nrpchost=127.0.0.1\n",crc,password,rpcport);
 
                 // add basic chain parameters for non-VRSC chains
-                if (!_IsVerusActive())
+                if (!_IsVerusMainnetActive())
                 {
                     const char *charPtr;
                     // basic coin parameters. the rest will come from block 1
@@ -1453,6 +1453,7 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
                     fprintf(fp,"systemid=%s\n", EncodeDestination(CIdentityID(ConnectedChains.thisChain.systemID)).c_str());
                     fprintf(fp,"startblock=%d\n", ConnectedChains.thisChain.startBlock);
                     fprintf(fp,"endblock=%d\n", ConnectedChains.thisChain.endBlock);
+                    fprintf(fp,"gatewayconverterissuance=%s\n", (charPtr = mapArgs["-gatewayconverterissuance"].c_str())[0] == 0 ? "0" : charPtr);
                     fprintf(fp,"ac_supply=%s\n", (charPtr = mapArgs["-ac_supply"].c_str())[0] == 0 ? "0" : charPtr);
                     fprintf(fp,"ac_halving=%s\n", (charPtr = mapArgs["-ac_halving"].c_str())[0] == 0 ? "0" : charPtr);
                     fprintf(fp,"ac_decay=%s\n", (charPtr = mapArgs["-ac_decay"].c_str())[0] == 0 ? "0" : charPtr);
@@ -1530,7 +1531,7 @@ uint16_t komodo_userpass(char *userpass, char *symbol)
     return(port);
 }
 
-uint32_t komodo_assetmagic(char *symbol,uint64_t supply,uint8_t *extraptr,int32_t extralen)
+uint32_t komodo_assetmagic(const char *symbol,uint64_t supply,uint8_t *extraptr,int32_t extralen)
 {
     std::string name(symbol);
     if (name != "VRSC")
@@ -1566,7 +1567,7 @@ uint16_t komodo_assetport(uint32_t magic,int32_t extralen)
     else return(16000 + (magic % 49500));
 }
 
-uint16_t komodo_port(char *symbol,uint64_t supply,uint32_t *magicp,uint8_t *extraptr,int32_t extralen)
+uint16_t komodo_port(const char *symbol,uint64_t supply,uint32_t *magicp,uint8_t *extraptr,int32_t extralen)
 {
     *magicp = komodo_assetmagic(symbol,supply,extraptr,extralen);
     return(komodo_assetport(*magicp,extralen));
@@ -1685,11 +1686,18 @@ uint64_t komodo_ac_block_subsidy(int nHeight)
     }
     if (nHeight == 1)
     {
-        if (_IsVerusActive() && !PBAAS_TESTMODE)
+        if (_IsVerusMainnetActive())
         {
             subsidy += ASSETCHAINS_SUPPLY + (ASSETCHAINS_MAGIC & 0xffffff);
         }
-        else
+        // TODO: HARDENING - supply has always been zero when this was called and it
+        // mattered in the past on PBaaS chains. verify this is correct to have this commented
+        // before mainnet release
+        /*else
+        {
+            subsidy += ASSETCHAINS_SUPPLY;
+        } */
+        else if (_IsVerusActive())
         {
             subsidy += ASSETCHAINS_SUPPLY;
         }
@@ -1700,7 +1708,7 @@ uint64_t komodo_ac_block_subsidy(int nHeight)
 extern int64_t MAX_MONEY;
 extern int64_t MAX_SUPPLY;
 extern std::string VERUS_DEFAULT_ZADDR;
-bool SetThisChain(const UniValue &chainDefinition);
+bool SetThisChain(const UniValue &chainDefinition, CCurrencyDefinition *retDef);
 
 void komodo_args(char *argv0)
 {
@@ -1878,7 +1886,9 @@ void komodo_args(char *argv0)
         mapArgs["-endblock"] = to_string(PBAAS_ENDBLOCK);
 
         ASSETCHAINS_SUPPLY = mainVerusCurrency.GetTotalPreallocation();
+        ASSETCHAINS_ISSUANCE = mainVerusCurrency.gatewayConverterIssuance;
         mapArgs["-ac_supply"] = to_string(ASSETCHAINS_SUPPLY);
+        mapArgs["-gatewayconverterissuance"] = to_string(ASSETCHAINS_ISSUANCE);
 
         if (name == "VRSC")
         {
@@ -1928,14 +1938,19 @@ void komodo_args(char *argv0)
                 UniValue result;
                 try
                 {
+                    CCurrencyDefinition thisCurrency;
                     result = RPCCallRoot("getcurrency", params);
                     // set local parameters
                     result = find_value(result, "result");
-                    if (result.isNull() || !SetThisChain(result))
+                    if (result.isNull() || !SetThisChain(result, &thisCurrency))
                     {
                         throw error("Cannot find blockchain data");
                     }
                     name = string(ASSETCHAINS_SYMBOL);
+                    ASSETCHAINS_SUPPLY = thisCurrency.GetTotalPreallocation();
+                    ASSETCHAINS_ISSUANCE = thisCurrency.gatewayConverterIssuance;
+                    mapArgs["-ac_supply"] = to_string(ASSETCHAINS_SUPPLY);
+                    mapArgs["-gatewayconverterissuance"] = to_string(ASSETCHAINS_ISSUANCE);
                     paramsLoaded = true;
                 }
                 catch(const std::exception& e)
@@ -2044,8 +2059,9 @@ void komodo_args(char *argv0)
             PBAAS_STARTBLOCK = GetArg("-startblock", 0);
             PBAAS_ENDBLOCK = GetArg("-endblock", 0);
 
-            // supply is the total of all pre-allocations
+            // supply is the total of all pre-allocations && issuance
             ASSETCHAINS_SUPPLY = GetArg("-ac_supply", 0);
+            ASSETCHAINS_ISSUANCE = GetArg("-gatewayconverterissuance", 0);
             ASSETCHAINS_RPCHOST = GetArg("-rpchost", "127.0.0.1");
         }
 
@@ -2137,7 +2153,8 @@ void komodo_args(char *argv0)
         MAX_MONEY = komodo_max_money();
 
         //printf("baseid.%d MAX_MONEY.%s %.8f\n",baseid,ASSETCHAINS_SYMBOL,(double)MAX_MONEY/SATOSHIDEN);
-        ASSETCHAINS_P2PPORT = komodo_port(ASSETCHAINS_SYMBOL,ASSETCHAINS_SUPPLY,&ASSETCHAINS_MAGIC,extraptr,extralen);
+        ASSETCHAINS_P2PPORT = komodo_port(_IsVerusName(name) ? ASSETCHAINS_SYMBOL : boost::to_lower_copy(name).c_str(),
+                                          ASSETCHAINS_SUPPLY + ASSETCHAINS_ISSUANCE, &ASSETCHAINS_MAGIC, extraptr, extralen);
 
         while ( (dirname= (char *)GetDataDir(false).string().c_str()) == 0 || dirname[0] == 0 )
         {
@@ -2148,6 +2165,7 @@ void komodo_args(char *argv0)
 						boost::this_thread::sleep(boost::posix_time::milliseconds(3000));
 						#endif
         }
+
         //fprintf(stderr,"Got datadir.(%s)\n",dirname);
         if ( ASSETCHAINS_SYMBOL[0] != 0 )
         {
@@ -2218,13 +2236,15 @@ void komodo_args(char *argv0)
                 }
                 obj.push_back(Pair("eras", eras));
 
+                obj.push_back(Pair("gatewayconverterissuance", ASSETCHAINS_ISSUANCE));
+
                 // we do not have pre-allocation data here, so fake one lump sum of pre-allocation to a NULL address
                 // this will get replaced from either block 1 of our chain, or a connection to VRSC
                 if (ASSETCHAINS_SUPPLY)
                 {
                     UniValue preallocArr(UniValue::VARR);
                     UniValue preallocObj(UniValue::VOBJ);
-                    preallocObj.push_back(Pair("DestinationPending", ValueFromAmount((CAmount)ASSETCHAINS_SUPPLY)));
+                    preallocObj.push_back(Pair("blockoneminer", ValueFromAmount((CAmount)ASSETCHAINS_SUPPLY)));
                     preallocArr.push_back(preallocObj);
                     obj.push_back(Pair("preallocations", preallocArr));
                 }
@@ -2242,7 +2262,7 @@ void komodo_args(char *argv0)
                 obj.pushKV("nodes", nodeArr);
             }
 
-            SetThisChain(obj);
+            SetThisChain(obj, nullptr);
             paramsLoaded = true;
         }
     }

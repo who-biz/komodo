@@ -27,7 +27,7 @@ UniValue RPCCallRoot(const string& strMethod, const UniValue& params, int timeou
     return NullUniValue;
 }
 
-bool SetThisChain(const UniValue &chainDefinition) {
+bool SetThisChain(const UniValue &chainDefinition, CCurrencyDefinition *retDef) {
     return true; // (?) pbaas/pbaas.h
 }
 
@@ -470,7 +470,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             }
         }
 
-        if (IsPBaaSChain() || IsGateway() || IsPBaaSConverter())
+        if (IsPBaaSChain() || IsGateway() || IsGatewayConverter())
         {
             gatewayConverterIssuance = AmountFromValueNoErr(find_value(obj, "gatewayconverterissuance"));
         }
@@ -1065,7 +1065,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
 
     if (!gatewayID.IsNull())
     {
-        obj.push_back(Pair("gatewayid", gatewayID.GetHex()));
+        obj.push_back(Pair("gateway", EncodeDestination(CIdentityID(gatewayID))));
     }
 
     if (contributions.size())
@@ -1078,7 +1078,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("initialcontributions", initialContributionArr));
     }
 
-    if (IsGateway() || IsPBaaSConverter() || IsPBaaSChain())
+    if (IsGateway() || IsGatewayConverter() || IsPBaaSChain())
     {
         obj.push_back(Pair("gatewayconverterissuance", ValueFromAmount(gatewayConverterIssuance)));
     }
@@ -1134,6 +1134,32 @@ UniValue CCurrencyDefinition::ToUniValue() const
     }
 
     return obj;
+}
+
+CTransferDestination CTransferDestination::GetAuxDest(int destNum) const
+{
+    CTransferDestination retVal;
+    if (auxDests.size() < destNum)
+    {
+        ::FromVector(auxDests[destNum], retVal);
+        if (retVal.type & FLAG_DEST_AUX || retVal.auxDests.size())
+        {
+            retVal.type = DEST_INVALID;
+        }
+        // no gateways or flags, only simple destinations work
+        switch (retVal.type)
+        {
+            case DEST_ID:
+            case DEST_PK:
+            case DEST_PKH:
+            case DEST_ETH:
+            case DEST_SH:
+                break;
+            default:
+                retVal.type = DEST_INVALID;
+        }
+    }
+    return retVal;
 }
 
 int64_t CCurrencyDefinition::GetTotalPreallocation() const

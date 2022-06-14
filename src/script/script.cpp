@@ -208,7 +208,39 @@ uint160 CTransferDestination::GetBoundCurrencyExportKey(const uint160 &exportToS
     return retVal;
 }
 
-CTxDestination TransferDestinationToDestination(const CTransferDestination &transferDest)
+CTxDestination GetCompatibleAuxDestination(const CTransferDestination &transferDest, CCurrencyDefinition::EProofProtocol addressProtocol)
+{
+    for (int i = 0; i < transferDest.AuxDestCount(); i++)
+    {
+        switch (transferDest.GetAuxDest(i).TypeNoFlags())
+        {
+            case CTransferDestination::DEST_PKH:
+            case CTransferDestination::DEST_PK:
+            case CTransferDestination::DEST_SH:
+            case CTransferDestination::DEST_ID:
+            case CTransferDestination::DEST_FULLID:
+            {
+                if (addressProtocol != CCurrencyDefinition::PROOF_ETHNOTARIZATION)
+                {
+                    return TransferDestinationToDestination(transferDest.GetAuxDest(i));
+                }
+                break;
+            }
+
+            case CTransferDestination::DEST_ETH:
+            {
+                if (addressProtocol == CCurrencyDefinition::PROOF_ETHNOTARIZATION)
+                {
+                    return TransferDestinationToDestination(transferDest.GetAuxDest(i));
+                }
+                break;
+            }
+        }
+    }
+    return CTxDestination();
+}
+
+CTxDestination TransferDestinationToDestination(const CTransferDestination &transferDest, CCurrencyDefinition::EProofProtocol addressProtocol)
 {
     CTxDestination retDest;
     switch (transferDest.TypeNoFlags())
@@ -317,16 +349,6 @@ CCurrencyDefinition TransferDestinationToCurrency(const CTransferDestination &de
         }        
     }
     return retCurrency;
-}
-
-std::vector<CTxDestination> TransferDestinationsToDestinations(const std::vector<CTransferDestination> &transferDests)
-{
-    std::vector<CTxDestination> retDests;
-    for (auto &dest : transferDests)
-    {
-        retDests.push_back(TransferDestinationToDestination(dest));
-    }
-    return retDests;
 }
 
 std::vector<CTransferDestination> DestinationsToTransferDestinations(const std::vector<CTxDestination> &dests)
@@ -683,7 +705,7 @@ bool CScript::IsSpendableOutputType(const COptCCParams &p) const
     {
         case EVAL_CURRENCYSTATE:
         case EVAL_RESERVE_TRANSFER:
-        case EVAL_RESERVE_EXCHANGE:
+        case EVAL_IDENTITY_ADVANCEDRESERVATION:
         case EVAL_RESERVE_DEPOSIT:
         case EVAL_CROSSCHAIN_IMPORT:
         case EVAL_IDENTITY_COMMITMENT:
@@ -1201,14 +1223,8 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 rt.destination.TypeNoFlags() == rt.destination.DEST_REGISTERCURRENCY)
             {
                 destinations.insert(rt.destination.CurrencyExportKeyToSystem(rt.destSystemID));
-                destinations.insert(rt.destination.CurrencyExportKeyToSystem(rt.destination.GetBoundCurrencyExportKey(rt.destSystemID)));
+                destinations.insert(rt.destination.GetBoundCurrencyExportKey(rt.destSystemID));
             }
-            break;
-        }
-
-        case EVAL_RESERVE_EXCHANGE:
-        {
-            assert(false);
             break;
         }
 
@@ -1278,6 +1294,7 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(cci.sourceSystemID, cci.CurrencySystemImportKey())));
                 }
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(cci.importCurrencyID, cci.CurrencyImportKey())));
+                destinations.insert(CIndexID(cci.CurrencyImportFromSystemKey(cci.sourceSystemID, cci.importCurrencyID)));
             }
             break;
         }
@@ -1288,6 +1305,18 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             if (vData.size() && (identity = CIdentity(vData[0])).IsValid())
             {
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(identity.GetID(), evalCode)));
+            }
+            break;
+        }
+
+        case EVAL_IDENTITY_ADVANCEDRESERVATION:
+        {
+            CAdvancedNameReservation nameRes;
+            if (vData.size() && (nameRes = CAdvancedNameReservation(vData[0])).IsValid())
+            {
+                uint160 parent = nameRes.parent;
+                uint160 ourID = CIdentity::GetID(nameRes.name, parent);
+                destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ourID, evalCode)));
             }
             break;
         }
