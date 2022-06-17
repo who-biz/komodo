@@ -245,7 +245,9 @@ void *chainparams_commandline(void *ptr)
         {
             // this is only good for 60 second blocks with an averaging window of 45. for other parameters, use:
             // nLwmaAjustedWeight = (N+1)/2 * (0.9989^(500/nPowAveragingWindow)) * nPowTargetSpacing 
-            mainParams.consensus.nLwmaAjustedWeight = 1350;
+
+            // for CHIPS: (201)/2 * (0.9989^(500/45)) * 17 = 1687 (approx), rounded down to 1650
+            mainParams.consensus.nLwmaAjustedWeight = 1650;
             mainParams.consensus.nPowAveragingWindow = 45;
             mainParams.consensus.powAlternate = uint256S("00000f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f");
         }
