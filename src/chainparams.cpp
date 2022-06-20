@@ -244,10 +244,11 @@ void *chainparams_commandline(void *ptr)
         if (ASSETCHAINS_ALGO != ASSETCHAINS_EQUIHASH)
         {
             // this is only good for 60 second blocks with an averaging window of 45. for other parameters, use:
-            // nLwmaAjustedWeight = (N+1)/2 * (0.9989^(500/nPowAveragingWindow)) * nPowTargetSpacing 
+            // nLwmaAjustedWeight = (N+1)/2 * (0.9989^(500/nPowAveragingWindow)) * nPowTargetSpacing
 
-            // for CHIPS: (201)/2 * (0.9989^(500/45)) * 17 = 1687 (approx), rounded down to 1650
-            mainParams.consensus.nLwmaAjustedWeight = 1650;
+            // for CHIPS: nPowAveragingWindow = 17, nPowTargetSpacing = 10
+            // (45 + 1)/2 * (0.9989^(500/17)) * 10 = 222.674 (approx), rounded down to 220
+            mainParams.consensus.nLwmaAjustedWeight = 220;
             mainParams.consensus.nPowAveragingWindow = 45;
             mainParams.consensus.powAlternate = uint256S("00000f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f");
         }
