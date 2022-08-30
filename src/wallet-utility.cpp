@@ -19,8 +19,8 @@ uint160 VERUS_CHAINID;
 std::string VERUS_CHAINNAME;
 int64_t MAX_MONEY = 200000000 * 100000000LL;
 int64_t MAX_SUPPLY = 50000000000LL * 100000000LL;
-uint64_t ASSETCHAINS_SUPPLY;
-uint64_t ASSETCHAINS_ISSUANCE;
+int64_t ASSETCHAINS_SUPPLY;
+int64_t ASSETCHAINS_ISSUANCE;
 uint16_t BITCOIND_RPCPORT = 7771;
 uint16_t ASSETCHAINS_P2PPORT,ASSETCHAINS_RPCPORT;
 uint32_t ASSETCHAIN_INIT,ASSETCHAINS_CC;
@@ -45,6 +45,13 @@ CConnectedChains ConnectedChains;
 CCurrencyDefinition CConnectedChains::GetCachedCurrency(const uint160 &currencyID)
 {
     return CCurrencyDefinition();
+}
+// unused in client, but here for linking
+bool fIdIndex;
+uint160 CIdentity::IdentityPrimaryAddressKey(const CTxDestination &dest)
+{
+    assert(false);
+    return uint160();
 }
 
 void show_help()

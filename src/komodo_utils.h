@@ -1690,13 +1690,6 @@ uint64_t komodo_ac_block_subsidy(int nHeight)
         {
             subsidy += ASSETCHAINS_SUPPLY + (ASSETCHAINS_MAGIC & 0xffffff);
         }
-        // TODO: HARDENING - supply has always been zero when this was called and it
-        // mattered in the past on PBaaS chains. verify this is correct to have this commented
-        // before mainnet release
-        /*else
-        {
-            subsidy += ASSETCHAINS_SUPPLY;
-        } */
         else if (_IsVerusActive())
         {
             subsidy += ASSETCHAINS_SUPPLY;
@@ -1828,6 +1821,8 @@ void komodo_args(char *argv0)
 
         name = mainVerusCurrency.name;
 
+        ASSETCHAINS_ERAOPTIONS[0] = mainVerusCurrency.options;
+
         if (!ReadConfigFile(name, mapArgs, mapMultiArgs))
         {
             LogPrintf("Config file for %s not found.\n", name.c_str());
@@ -1852,7 +1847,7 @@ void komodo_args(char *argv0)
                 ASSETCHAINS_DECAY[j] = ASSETCHAINS_DECAY[j-1];
                 ASSETCHAINS_HALVING[j] = ASSETCHAINS_HALVING[j-1];
                 ASSETCHAINS_ENDSUBSIDY[j] = 0;
-                ASSETCHAINS_ERAOPTIONS[j] = 0;
+                ASSETCHAINS_ERAOPTIONS[j] = mainVerusCurrency.options;
             }
             else
             {
@@ -1947,6 +1942,7 @@ void komodo_args(char *argv0)
                         throw error("Cannot find blockchain data");
                     }
                     name = string(ASSETCHAINS_SYMBOL);
+                    ASSETCHAINS_ERAOPTIONS[0] = thisCurrency.options;
                     ASSETCHAINS_SUPPLY = thisCurrency.GetTotalPreallocation();
                     ASSETCHAINS_ISSUANCE = thisCurrency.gatewayConverterIssuance;
                     mapArgs["-ac_supply"] = to_string(ASSETCHAINS_SUPPLY);
@@ -2213,6 +2209,8 @@ void komodo_args(char *argv0)
             }
             else
             {
+                obj.push_back(Pair("options", ASSETCHAINS_ERAOPTIONS[0]));
+
                 // we need to set the chain definition for this chain based on globals set above
                 obj.push_back(Pair("premine", ASSETCHAINS_SUPPLY));
                 obj.push_back(Pair("name", ASSETCHAINS_SYMBOL));
@@ -2231,12 +2229,11 @@ void komodo_args(char *argv0)
                     era.push_back(Pair("decay", ASSETCHAINS_DECAY[i]));
                     era.push_back(Pair("halving", ASSETCHAINS_HALVING[i]));
                     era.push_back(Pair("eraend", ASSETCHAINS_ENDSUBSIDY[i]));
-                    era.push_back(Pair("eraoptions", ASSETCHAINS_ERAOPTIONS[i]));
                     eras.push_back(era);
                 }
                 obj.push_back(Pair("eras", eras));
 
-                obj.push_back(Pair("gatewayconverterissuance", ASSETCHAINS_ISSUANCE));
+                obj.push_back(Pair("gatewayconverterissuance", ValueFromAmount(ASSETCHAINS_ISSUANCE)));
 
                 // we do not have pre-allocation data here, so fake one lump sum of pre-allocation to a NULL address
                 // this will get replaced from either block 1 of our chain, or a connection to VRSC
