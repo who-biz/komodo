@@ -853,9 +853,6 @@ bool AppInitNetworking()
     if (!SetupNetworking())
         return InitError("Error: Initializing networking failed");
 
-    nBlockTime = GetArg("-blocktime",DEFAULT_BLOCKTIME_TARGET);
-    LogPrintf(">>> nBlockTime = %lu\n",nBlockTime);
-
     return true;
 }
 

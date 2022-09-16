@@ -79,7 +79,7 @@ void *chainparams_commandline(void *ptr);
 
 extern char ASSETCHAINS_SYMBOL[KOMODO_ASSETCHAIN_MAXLEN];
 extern uint16_t ASSETCHAINS_P2PPORT,ASSETCHAINS_RPCPORT;
-extern uint64_t nBlockTime;
+//extern uint64_t nBlockTime;
 extern uint32_t ASSETCHAIN_INIT, ASSETCHAINS_MAGIC, ASSETCHAINS_ALGO, ASSETCHAINS_EQUIHASH, ASSETCHAINS_VERUSHASH;
 extern int32_t VERUS_BLOCK_POSUNITS, ASSETCHAINS_LWMAPOS, ASSETCHAINS_SAPLING, ASSETCHAINS_OVERWINTER;
 extern int64_t ASSETCHAINS_SUPPLY;
@@ -108,7 +108,6 @@ public:
         consensus.nEquihashN = N;
         consensus.nEquihashK = K;
         consensus.nPowAveragingWindow = 17;
-        consensus.nBlockTime = nBlockTime;
         consensus.nMaxFutureBlockTime = 7 * consensus.nBlockTime; // 7 mins
 
         assert(maxUint/UintToArith256(consensus.powLimit) >= consensus.nPowAveragingWindow);
@@ -243,25 +242,37 @@ void *chainparams_commandline(void *ptr)
         mainParams.pchMessageStart[3] = (ASSETCHAINS_MAGIC >> 24) & 0xff;
         fprintf(stderr,">>>>>>>>>> %s: p2p.%u rpc.%u magic.%08x %u %lu coins\n",ASSETCHAINS_SYMBOL,ASSETCHAINS_P2PPORT,ASSETCHAINS_RPCPORT,ASSETCHAINS_MAGIC,ASSETCHAINS_MAGIC,ASSETCHAINS_SUPPLY / COIN);
 
+        int64_t nBlockTime = GetArg("-blocktime",DEFAULT_BLOCKTIME_TARGET);
+        LogPrintf(">>> nBlockTime = %lu\n",nBlockTime);
+
+        mainParams.SetBlockTime(nBlockTime);
+
         if (ASSETCHAINS_ALGO != ASSETCHAINS_EQUIHASH)
         {
             // this is only good for 60 second blocks with an averaging window of 45. for other parameters, use:
             // nLwmaAjustedWeight = (N+1)/2 * (0.9989^(500/nPowAveragingWindow)) * nPowTargetSpacing 
             mainParams.consensus.nPowAveragingWindow = 45;
             mainParams.consensus.powAlternate = uint256S("00000f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f");
-            mainParams.consensus.nLwmaAjustedWeight = 1350;
-            LogPrintf("nBlockTime = %llu\n",mainParams.consensus.nBlockTime);
+
             if (mainParams.consensus.nBlockTime != DEFAULT_BLOCKTIME_TARGET)
             {
                 float spacing = (float)mainParams.consensus.nBlockTime;
-                float window = (((float)mainParams.consensus.nPowAveragingWindow)+1.0f)/2.0f;
-                float coefficient = std::pow(0.9989f,(float)(500.0f/window));
+                LogPrintf(">>> spacing = %.1f\n",spacing);
+                float window = (float)((mainParams.consensus.nPowAveragingWindow+1)/2);
+                LogPrintf(">>> window = %.1f\n",window);
+                float coefficient = std::pow(0.9989f,(500.0f/17.0f));
                 LogPrintf(">>> coefficient LWMA weight = %.6f\n",coefficient);
-                float weight = ((window+1.0f)/(2.0f)) * coefficient * spacing;
+                float weight = window * coefficient * spacing;
                 LogPrintf(">>> nLwmaWeight = %.6f\n",weight);
-                mainParams.consensus.nLwmaAjustedWeight = (weight/10)*10; // int conversion
+                int weightint = ((int)weight)/10;
+                LogPrintf(">>> weightint = %d\n",weightint);
+                mainParams.consensus.nLwmaAjustedWeight = weightint*10; // int conversion
                 LogPrintf(">>> nLwmaAjustedWeight = %ld\n",mainParams.consensus.nLwmaAjustedWeight);
-            }
+            } else {
+                mainParams.consensus.nLwmaAjustedWeight = 1350;
+                LogPrintf("nBlockTime = %llu\n",mainParams.consensus.nBlockTime);
+           }
+
         }
 
         if (ASSETCHAINS_LWMAPOS != 0)
