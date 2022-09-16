@@ -79,6 +79,7 @@ void *chainparams_commandline(void *ptr);
 
 extern char ASSETCHAINS_SYMBOL[KOMODO_ASSETCHAIN_MAXLEN];
 extern uint16_t ASSETCHAINS_P2PPORT,ASSETCHAINS_RPCPORT;
+extern uint64_t nBlockTime;
 extern uint32_t ASSETCHAIN_INIT, ASSETCHAINS_MAGIC, ASSETCHAINS_ALGO, ASSETCHAINS_EQUIHASH, ASSETCHAINS_VERUSHASH;
 extern int32_t VERUS_BLOCK_POSUNITS, ASSETCHAINS_LWMAPOS, ASSETCHAINS_SAPLING, ASSETCHAINS_OVERWINTER;
 extern int64_t ASSETCHAINS_SUPPLY;
@@ -107,12 +108,13 @@ public:
         consensus.nEquihashN = N;
         consensus.nEquihashK = K;
         consensus.nPowAveragingWindow = 17;
-        consensus.nMaxFutureBlockTime = 7 * 60; // 7 mins
+        consensus.nBlockTime = nBlockTime;
+        consensus.nMaxFutureBlockTime = 7 * consensus.nBlockTime; // 7 mins
 
         assert(maxUint/UintToArith256(consensus.powLimit) >= consensus.nPowAveragingWindow);
         consensus.nPowMaxAdjustDown = 32; // 32% adjustment down
         consensus.nPowMaxAdjustUp = 16; // 16% adjustment up
-        consensus.nPowTargetSpacing = 1 * 60;
+        consensus.nPowTargetSpacing = 1 * consensus.nBlockTime;
         consensus.nPreBlossomPowTargetSpacing = Consensus::PRE_BLOSSOM_POW_TARGET_SPACING;
         consensus.nPostBlossomPowTargetSpacing = Consensus::POST_BLOSSOM_POW_TARGET_SPACING;
         consensus.nPowAllowMinDifficultyBlocksAfterHeight = boost::none;
@@ -145,7 +147,7 @@ public:
         // (Zcash) vAlertPubKey = ParseHex("04b7ecf0baa90495ceb4e4090f6b2fd37eec1e9c85fac68a487f3ce11589692e4a317479316ee814e066638e1db54e37a10689b70286e6315b1087b6615d179264");
         nDefaultPort = 7770;
         nMinerThreads = 0;
-        nMaxTipAge = 24 * 60 * 60;
+        nMaxTipAge = 24 * 60 * consensus.nBlockTime;
         nPruneAfterHeight = 100000;
 
         const char* pszTimestamp = "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks";
@@ -245,9 +247,21 @@ void *chainparams_commandline(void *ptr)
         {
             // this is only good for 60 second blocks with an averaging window of 45. for other parameters, use:
             // nLwmaAjustedWeight = (N+1)/2 * (0.9989^(500/nPowAveragingWindow)) * nPowTargetSpacing 
-            mainParams.consensus.nLwmaAjustedWeight = 1350;
             mainParams.consensus.nPowAveragingWindow = 45;
             mainParams.consensus.powAlternate = uint256S("00000f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f");
+            mainParams.consensus.nLwmaAjustedWeight = 1350;
+            LogPrintf("nBlockTime = %llu\n",mainParams.consensus.nBlockTime);
+            if (mainParams.consensus.nBlockTime != DEFAULT_BLOCKTIME_TARGET)
+            {
+                float spacing = (float)mainParams.consensus.nBlockTime;
+                float window = (((float)mainParams.consensus.nPowAveragingWindow)+1.0f)/2.0f;
+                float coefficient = std::pow(0.9989f,(float)(500.0f/window));
+                LogPrintf(">>> coefficient LWMA weight = %.6f\n",coefficient);
+                float weight = ((window+1.0f)/(2.0f)) * coefficient * spacing;
+                LogPrintf(">>> nLwmaWeight = %.6f\n",weight);
+                mainParams.consensus.nLwmaAjustedWeight = (weight/10)*10; // int conversion
+                LogPrintf(">>> nLwmaAjustedWeight = %ld\n",mainParams.consensus.nLwmaAjustedWeight);
+            }
         }
 
         if (ASSETCHAINS_LWMAPOS != 0)

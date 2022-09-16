@@ -76,6 +76,8 @@ int32_t KOMODO_NEWBLOCKS;
 int32_t komodo_block2pubkey33(uint8_t *pubkey33,CBlock *block);
 void komodo_broadcast(const CBlock *pblock,int32_t limit);
 
+uint64_t nBlockTime;
+
 BlockMap mapBlockIndex;
 CChain chainActive;
 CBlockIndex *pindexBestHeader = NULL;

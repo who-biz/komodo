@@ -125,6 +125,8 @@ public:
     CMessageHeader::MessageStartChars pchMessageStart; // jl777 moved
     Consensus::Params consensus;
 
+    uint64_t nBlockTime;
+
 protected:
     CChainParams() {}
 

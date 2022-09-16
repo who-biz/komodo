@@ -117,6 +117,7 @@ bool fLogIPs = DEFAULT_LOGIPS;
 std::atomic<bool> fReopenDebugLog(false);
 CTranslationInterface translationInterface;
 
+
 extern char ASSETCHAINS_SYMBOL[KOMODO_ASSETCHAIN_MAXLEN];
 
 bool _IsVerusActive()

@@ -151,6 +151,8 @@ extern bool fReindex;
 extern int nScriptCheckThreads;
 extern bool fTxIndex;
 extern bool fIdIndex;
+extern uint64_t nBlockTime;
+
 
 // START insightexplorer
 extern bool fInsightExplorer;

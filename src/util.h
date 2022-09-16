@@ -35,6 +35,9 @@ static const bool DEFAULT_LOGTIMEMICROS = false;
 static const bool DEFAULT_LOGIPS        = false;
 static const bool DEFAULT_LOGTIMESTAMPS = true;
 
+/** Default block time target for difficulty adjustment, in seconds **/
+static const unsigned int DEFAULT_BLOCKTIME_TARGET = 60;
+
 /** Signals for translation. */
 class CTranslationInterface
 {
