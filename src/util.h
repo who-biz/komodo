@@ -38,6 +38,9 @@ static const bool DEFAULT_LOGTIMESTAMPS = true;
 /** Default block time target for difficulty adjustment, in seconds **/
 static const unsigned int DEFAULT_BLOCKTIME_TARGET = 60;
 
+/** Default target spacing (blocks) for difficulty adjustment **/
+static const unsigned int DEFAULT_AVERAGING_WINDOW = 45;
+
 /** Signals for translation. */
 class CTranslationInterface
 {
