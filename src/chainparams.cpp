@@ -108,12 +108,10 @@ public:
         consensus.nEquihashN = N;
         consensus.nEquihashK = K;
         consensus.nPowAveragingWindow = 17;
-        consensus.nMaxFutureBlockTime = 7 * consensus.nBlockTime; // 7 mins
 
         assert(maxUint/UintToArith256(consensus.powLimit) >= consensus.nPowAveragingWindow);
         consensus.nPowMaxAdjustDown = 32; // 32% adjustment down
         consensus.nPowMaxAdjustUp = 16; // 16% adjustment up
-        consensus.nPowTargetSpacing = 1 * consensus.nBlockTime;
         consensus.nPreBlossomPowTargetSpacing = Consensus::PRE_BLOSSOM_POW_TARGET_SPACING;
         consensus.nPostBlossomPowTargetSpacing = Consensus::POST_BLOSSOM_POW_TARGET_SPACING;
         consensus.nPowAllowMinDifficultyBlocksAfterHeight = boost::none;
@@ -146,7 +144,6 @@ public:
         // (Zcash) vAlertPubKey = ParseHex("04b7ecf0baa90495ceb4e4090f6b2fd37eec1e9c85fac68a487f3ce11589692e4a317479316ee814e066638e1db54e37a10689b70286e6315b1087b6615d179264");
         nDefaultPort = 7770;
         nMinerThreads = 0;
-        nMaxTipAge = 24 * 60 * consensus.nBlockTime;
         nPruneAfterHeight = 100000;
 
         const char* pszTimestamp = "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks";
@@ -803,6 +800,13 @@ void EnableCoinbaseMustBeProtected()
 bool AreParamsInitialized()
 {
     return (pCurrentParams != NULL);
+}
+
+void CChainParams::SetBlockTime(uint64_t blockTime) {
+    consensus.nBlockTime = blockTime;
+    consensus.nMaxFutureBlockTime = 7 * consensus.nBlockTime;
+    consensus.nPowTargetSpacing = consensus.nBlockTime;
+    nMaxTipAge = 24 * 60 * consensus.nBlockTime;
 }
 
 CChainParams &Params(CBaseChainParams::Network network) {
