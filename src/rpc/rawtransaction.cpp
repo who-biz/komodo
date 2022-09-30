@@ -1305,6 +1305,7 @@ UniValue sendrawtransaction(const UniValue& params, bool fHelp)
 
     // parse hex string from parameter
     CTransaction tx;
+    LogPrintf(">>>> (%s) before DecodeHexTx in sendrawtransaction\n",__func__);
     if (!DecodeHexTx(tx, params[0].get_str()))
         throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "TX decode failed");
     uint256 hashTx = tx.GetHash();
@@ -1334,6 +1335,7 @@ UniValue sendrawtransaction(const UniValue& params, bool fHelp)
         // push to local node and sync with wallets
         CValidationState state;
         bool fMissingInputs;
+        LogPrintf(">>>> (%s) before AcceptToMemoryPool in sendrawtransaction\n",__func__);
         if (!AcceptToMemoryPool(mempool, state, tx, false, &fMissingInputs, !fOverrideFees)) {
             if (state.IsInvalid()) {
                 throw JSONRPCError(RPC_TRANSACTION_REJECTED, strprintf("%i: %s", state.GetRejectCode(), state.GetRejectReason()));
@@ -1346,7 +1348,7 @@ UniValue sendrawtransaction(const UniValue& params, bool fHelp)
         }
     } else if (fHaveChain) {
         throw JSONRPCError(RPC_TRANSACTION_ALREADY_IN_CHAIN, "transaction already in block chain");
-    }    
+    }
     RelayTransaction(tx);
 
     return hashTx.GetHex();
