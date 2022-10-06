@@ -829,13 +829,10 @@ UniValue createrawtransaction(const UniValue& params, bool fHelp)
 
     std::set<CTxDestination> destinations;
     vector<string> addrList = sendTo.getKeys();
-//    for (const std::string& name_ : addrList) {
-    for (size_t idx = 0; idx < sendTo.size(); idx++) {
 
-        const std::string& name_ = addrList[idx];
+    for (const std::string& name_ : addrList) {
         if (name_ == "data") {
             std::vector<unsigned char> data = ParseHexV(sendTo[name_].getValStr(), "Data");
-
             CTxOut out(0, CScript() << OP_RETURN << data);
             rawTx.vout.push_back(out);
         } else {
