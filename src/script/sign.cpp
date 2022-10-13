@@ -21,6 +21,16 @@ using namespace std;
 
 typedef std::vector<unsigned char> valtype;
 
+extern int32_t KOMODO_NSPV;
+#ifndef KOMODO_NSPV_FULLNODE
+#define KOMODO_NSPV_FULLNODE (KOMODO_NSPV <= 0)
+#endif // !KOMODO_NSPV_FULLNODE
+#ifndef KOMODO_NSPV_SUPERLITE
+#define KOMODO_NSPV_SUPERLITE (KOMODO_NSPV > 0)
+#endif // !KOMODO_NSPV_SUPERLITE
+
+uint256 SIG_TXHASH;
+
 TransactionSignatureCreator::TransactionSignatureCreator(const CKeyStore* keystoreIn, const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, const CScript &scriptPubKey, uint32_t spendHeight, int nHashTypeIn) 
     : BaseSignatureCreator(keystoreIn), txTo(txToIn), nIn(nInIn), nHashType(nHashTypeIn), amount(amountIn), checker(txTo, nIn, amountIn, &scriptPubKey, keystoreIn, spendHeight) {}
 

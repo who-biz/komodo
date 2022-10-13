@@ -1715,6 +1715,7 @@ void komodo_args(char *argv0)
     int32_t baseid,len,n,extralen = 0;
 
     IS_KOMODO_NOTARY = GetBoolArg("-notary", false);
+    KOMODO_NSPV = GetArg("-nSPV",0);
 
     if ( GetBoolArg("-gen", false) != 0 )
     {
