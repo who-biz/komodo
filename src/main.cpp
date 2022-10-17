@@ -9008,6 +9008,22 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         }
     }
 
+    // temporary optional nspv message processing
+    else if (GetBoolArg("-nspv_msg", DEFAULT_NSPV_PROCESSING) &&
+            (strCommand == "getnSPV" || strCommand == "nSPV")) {
+
+        std::vector<uint8_t> payload;
+        vRecv >> payload;
+
+        if (strCommand == "getnSPV" && KOMODO_NSPV == 0) {
+            komodo_nSPVreq(pfrom, payload);
+        } else if (strCommand == "nSPV" && KOMODO_NSPV_SUPERLITE) {
+            komodo_nSPVresp(pfrom, payload);
+        }
+        return (true);
+    }
+    else if ( KOMODO_NSPV_SUPERLITE )
+        return(true);
 
     else if (!(nLocalServices & NODE_BLOOM) &&
               (strCommand == "filterload" ||
