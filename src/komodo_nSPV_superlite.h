@@ -231,6 +231,7 @@ CNode *NSPV_req(CNode *pnode,uint8_t *msg,int32_t len,uint64_t mask,int32_t ind)
         n = 0;
         BOOST_FOREACH(CNode *ptr,vNodes)
         {
+            LogPrintf(">>> (%s) ptr->nServices(%d), nServices & mask(%d), mask(%d), ptr->addr(%s)\n", __func__, ptr->nServices, (ptr->nServices & mask), mask, ptr->addr.ToString());
             if ( ptr->prevtimes[ind] > timestamp )
                 ptr->prevtimes[ind] = 0;
             if ( ptr->hSocket == INVALID_SOCKET )
