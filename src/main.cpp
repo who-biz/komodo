@@ -3557,6 +3557,10 @@ static int64_t nTimeTotal = 0;
 bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pindex, CCoinsViewCache& view, const CChainParams& chainparams, bool fJustCheck, bool fCheckPOW)
 {
     uint32_t nHeight = pindex->GetHeight();
+
+    if ( KOMODO_NSPV_SUPERLITE )
+        return(true);
+
     if (KOMODO_STOPAT != 0 && nHeight > KOMODO_STOPAT)
     {
         return false;
