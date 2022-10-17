@@ -5,6 +5,7 @@
 
 #include "protocol.h"
 
+#include "main.h"
 #include "util.h"
 #include "utilstrencodings.h"
 
