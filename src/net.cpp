@@ -83,7 +83,7 @@ extern int32_t USE_EXTERNAL_PUBKEY;
 
 bool fDiscover = true;
 bool fListen = true;
-uint64_t nLocalServices = GetBoolArg("-nspv_msg", DEFAULT_NSPV_PROCESSING) ? NODE_NETWORK | NODE_NSPV : NODE_NETWORK;
+uint64_t nLocalServices = NODE_NETWORK;
 CCriticalSection cs_mapLocalHost;
 map<CNetAddr, LocalServiceInfo> mapLocalHost;
 static bool vfLimited[NET_MAX] = {};
