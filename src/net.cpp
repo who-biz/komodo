@@ -2085,6 +2085,12 @@ void static Discover(boost::thread_group& threadGroup)
 
 void StartNode(boost::thread_group& threadGroup, CScheduler& scheduler)
 {
+
+    if (GetBoolArg("-nspv_msg", DEFAULT_NSPV_PROCESSING)) {
+        nLocalServices |= NODE_NSPV;
+        LogPrintf("NSPV messages processing enabled\n");
+    }
+
     uiInterface.InitMessage(_("Loading addresses..."));
     // Load addresses for peers.dat
     int64_t nStart = GetTimeMillis();
