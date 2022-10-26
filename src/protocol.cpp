@@ -88,7 +88,19 @@ CAddress::CAddress(CService ipIn, uint64_t nServicesIn) : CService(ipIn)
 
 void CAddress::Init()
 {
+    LogPrintf(">> CAddressInit(): nServices(%llu) ... NODE_NETWORK example\n",NODE_NETWORK);
     nServices = GetBoolArg("-nspv_msg", DEFAULT_NSPV_PROCESSING) ? NODE_NETWORK | NODE_NSPV : NODE_NETWORK;
+    LogPrintf(">> CAddress::Init(): nServices(%llu)\n",nServices);
+    if (nServices == NODE_NSPV) {
+        LogPrintf(">> CAddress::Init(): nServices(%llu), NODE_NSPV set!\n",nServices);
+        bool dealerFlag = GetBoolArg("-dealer",0);
+        LogPrintf(">> %s, dealerFlag(%d)\n",__func__,dealerFlag);
+        if (dealerFlag) {
+            nServices = NODE_NSPV | NODE_CASHIER;
+            LogPrintf(">> CAddress::Init(): nServices(%llu), NODE_CASHIER & NODE_NSPV set!\n",nServices);
+        }
+    }
+//        nServices = dealerFlag ? NODE_NSPV | NODE_CASHIER : NODE_NSPV;
     nTime = 100000000;
 }
 
