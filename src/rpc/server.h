@@ -383,6 +383,9 @@ extern UniValue invalidateblock(const UniValue& params, bool fHelp);
 extern UniValue reconsiderblock(const UniValue& params, bool fHelp);
 extern UniValue getspentinfo(const UniValue& params, bool fHelp);
 
+extern UniValue nspv_getinfo(const UniValue& params, bool fHelp);
+extern UniValue nspv_broadcast(const UniValue& params, bool fHelp);
+
 extern UniValue getblocksubsidy(const UniValue& params, bool fHelp);
 
 extern UniValue z_exportkey(const UniValue& params, bool fHelp); // in rpcdump.cpp

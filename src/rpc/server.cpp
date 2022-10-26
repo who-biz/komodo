@@ -340,6 +340,11 @@ static const CRPCCommand vRPCCommands[] =
 #ifdef ENABLE_WALLET
     { "rawtransactions",    "fundrawtransaction",     &fundrawtransaction,     false },
 #endif
+
+    /* nSPV functionality */
+    { "nSPV",   "nspv_getinfo",         &nspv_getinfo,      true },
+    { "nSPV",   "nspv_broadcast",       &nspv_broadcast,    true },
+
 /*
     // auction
     { "auction",       "auctionaddress",    &auctionaddress,  true },
