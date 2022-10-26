@@ -9016,12 +9016,16 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
     else if (GetBoolArg("-nspv_msg", DEFAULT_NSPV_PROCESSING) &&
             (strCommand == "getnSPV" || strCommand == "nSPV")) {
 
+        LogPrintf(">>>> %s: strCommand(%s), vRecv(%s)\n",__func__,strCommand,vRecv.str());
+
         std::vector<uint8_t> payload;
         vRecv >> payload;
 
         if (strCommand == "getnSPV" && KOMODO_NSPV == 0) {
+            LogPrintf(">>> %s: calling komodo_nSPVreq...\n",__func__);
             komodo_nSPVreq(pfrom, payload);
         } else if (strCommand == "nSPV" && KOMODO_NSPV_SUPERLITE) {
+            LogPrintf(">>> %s: calling komodo_nSPVresp...\n",__func__);
             komodo_nSPVresp(pfrom, payload);
         }
         return (true);
