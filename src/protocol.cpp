@@ -91,7 +91,7 @@ void CAddress::Init()
     LogPrintf(">> CAddressInit(): nServices(%llu) ... NODE_NETWORK example\n",NODE_NETWORK);
     nServices = GetBoolArg("-nspv_msg", DEFAULT_NSPV_PROCESSING) ? NODE_NETWORK | NODE_NSPV : NODE_NETWORK;
     LogPrintf(">> CAddress::Init(): nServices(%llu)\n",nServices);
-    if (nServices == NODE_NSPV) {
+    if (nServices == (NODE_NETWORK | NODE_NSPV)) {
         LogPrintf(">> CAddress::Init(): nServices(%llu), NODE_NSPV set!\n",nServices);
         bool dealerFlag = GetBoolArg("-dealer",0);
         LogPrintf(">> %s, dealerFlag(%d)\n",__func__,dealerFlag);
