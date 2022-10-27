@@ -512,7 +512,7 @@ uint8_t *NSPV_getrawtx(CTransaction &tx,uint256 &hashBlock,int32_t *txlenp,uint2
     }
     return(rawtx);
 }
-
+*/
 int32_t NSPV_sendrawtransaction(struct NSPV_broadcastresp *ptr,uint8_t *data,int32_t n)
 {
     CTransaction tx;
@@ -535,7 +535,7 @@ int32_t NSPV_sendrawtransaction(struct NSPV_broadcastresp *ptr,uint8_t *data,int
     } else ptr->retcode = -1;
     return(sizeof(*ptr));
 }
-
+/*
 int32_t NSPV_gettxproof(struct NSPV_txproof *ptr,int32_t vout,uint256 txid,int32_t height)
 {
     int32_t flag = 0,len = 0; CTransaction _tx; uint256 hashBlock; CBlock block; CBlockIndex *pindex;
@@ -901,7 +901,7 @@ void komodo_nSPVreq(CNode *pfrom,std::vector<uint8_t> request) // received a req
                     }
                 }
             }
-        }
+        }*/
         else if ( request[0] == NSPV_BROADCAST )
         {
             if ( timestamp > pfrom->prevtimes[ind] )
@@ -926,7 +926,7 @@ void komodo_nSPVreq(CNode *pfrom,std::vector<uint8_t> request) // received a req
                     }
                 }
             }
-        }
+        }/*
         else if ( request[0] == NSPV_REMOTERPC )
         {
             if ( timestamp > pfrom->prevtimes[ind] )
