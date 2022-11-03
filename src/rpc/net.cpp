@@ -170,6 +170,108 @@ UniValue getpeerinfo(const UniValue& params, bool fHelp)
     return ret;
 }
 
+UniValue getcashiers(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 0)
+        throw runtime_error(
+            "getcashiers\n"
+            "\nReturns data about each connected cashier node as a json array of objects.\n"
+            "\nbResult:\n"
+            "[\n"
+            "  {\n"
+            "    \"id\": n,                   (numeric) Peer index\n"
+            "    \"addr\":\"host:port\",      (string) The ip address and port of the peer\n"
+            "    \"addrlocal\":\"ip:port\",   (string) local address\n"
+            "    \"services\":\"xxxxxxxxxxxxxxxx\",   (string) The services offered\n"
+            "    \"tls_established\": true|false,        (boolean) status of TLS connection\n"
+            "    \"tls_verified\": true|false,           (boolean) status of peer certificate. True if the chain of trust of a peer certificate can be verified using the OS certificate store\n"
+            "    \"lastsend\": ttt,           (numeric) The time in seconds since epoch (Jan 1 1970 GMT) of the last send\n"
+            "    \"lastrecv\": ttt,           (numeric) The time in seconds since epoch (Jan 1 1970 GMT) of the last receive\n"
+            "    \"bytessent\": n,            (numeric) The total bytes sent\n"
+            "    \"bytesrecv\": n,            (numeric) The total bytes received\n"
+            "    \"conntime\": ttt,           (numeric) The connection time in seconds since epoch (Jan 1 1970 GMT)\n"
+            "    \"timeoffset\": ttt,         (numeric) The time offset in seconds\n"
+            "    \"pingtime\": n,             (numeric) ping time\n"
+            "    \"pingwait\": n,             (numeric) ping wait\n"
+            "    \"version\": v,              (numeric) The peer version, such as 170002\n"
+            "    \"subver\": \"/MagicBean:x.y.z[-v]/\",  (string) The string version\n"
+            "    \"inbound\": true|false,     (boolean) Inbound (true) or Outbound (false)\n"
+            "    \"startingheight\": n,       (numeric) The starting height (block) of the peer\n"
+            "    \"banscore\": n,             (numeric) The ban score\n"
+            "    \"synced_headers\": n,       (numeric) The last header we have in common with this peer\n"
+            "    \"synced_blocks\": n,        (numeric) The last block we have in common with this peer\n"
+            "    \"inflight\": [\n"
+            "       n,                        (numeric) The heights of blocks we're currently asking from this peer\n"
+            "       ...\n"
+            "    ]\n"
+            "  }\n"
+            "  ,...\n"
+            "]\n"
+            "\nExamples:\n"
+            + HelpExampleCli("getcashiers", "")
+            + HelpExampleRpc("getcashiers", "")
+        );
+
+    LOCK(cs_main);
+
+    vector<CNodeStats> vstats;
+    CopyNodeStats(vstats);
+
+    UniValue ret(UniValue::VARR);
+
+    BOOST_FOREACH(const CNodeStats& stats, vstats) {
+
+        uint64_t services = stats.nServices;
+        if ((services & NODE_CASHIER) == NODE_CASHIER) {
+            LogPrintf(">>> %s: mask check passed for node(%s).nServices(%s).mask(%s)\n",__func__,stats.addrName,strprintf("%016x",stats.nServices),strprintf("%016x",NODE_CASHIER));
+
+            UniValue obj(UniValue::VOBJ);
+            CNodeStateStats statestats;
+            bool fStateStats = GetNodeStateStats(stats.nodeid, statestats);
+            obj.push_back(Pair("id", stats.nodeid));
+            obj.push_back(Pair("addr", stats.addrName));
+            if (!(stats.addrLocal.empty()))
+                obj.push_back(Pair("addrlocal", stats.addrLocal));
+            obj.push_back(Pair("services", strprintf("%016x", stats.nServices)));
+            obj.push_back(Pair("tls_established", stats.fTLSEstablished));
+            obj.push_back(Pair("tls_verified", stats.fTLSVerified));
+            obj.push_back(Pair("lastsend", stats.nLastSend));
+            obj.push_back(Pair("lastrecv", stats.nLastRecv));
+            obj.push_back(Pair("bytessent", stats.nSendBytes));
+            obj.push_back(Pair("bytesrecv", stats.nRecvBytes));
+            obj.push_back(Pair("conntime", stats.nTimeConnected));
+            obj.push_back(Pair("timeoffset", stats.nTimeOffset));
+            obj.push_back(Pair("pingtime", stats.dPingTime));
+            if (stats.dPingWait > 0.0)
+                obj.push_back(Pair("pingwait", stats.dPingWait));
+            obj.push_back(Pair("version", stats.nVersion));
+            // Use the sanitized form of subver here, to avoid tricksy remote peers from
+            // corrupting or modifying the JSON output by putting special characters in
+            // their ver message.
+            obj.push_back(Pair("subver", stats.cleanSubVer));
+            obj.push_back(Pair("inbound", stats.fInbound));
+            obj.push_back(Pair("startingheight", stats.nStartingHeight));
+            if (fStateStats) {
+                obj.push_back(Pair("banscore", statestats.nMisbehavior));
+                obj.push_back(Pair("synced_headers", statestats.nSyncHeight));
+                obj.push_back(Pair("synced_blocks", statestats.nCommonHeight));
+                UniValue heights(UniValue::VARR);
+                BOOST_FOREACH(int height, statestats.vHeightInFlight) {
+                    heights.push_back(height);
+                }
+                obj.push_back(Pair("inflight", heights));
+            }
+            obj.push_back(Pair("whitelisted", stats.fWhitelisted));
+
+            ret.push_back(obj);
+        } else {
+          continue; // don't include nodes who fail mask check
+        }
+    }
+
+    return ret;
+}
+
 int32_t KOMODO_LONGESTCHAIN;
 int32_t komodo_longestchain()
 {
@@ -652,6 +754,7 @@ static const CRPCCommand commands[] =
     { "network",            "getdeprecationinfo",     &getdeprecationinfo,     true  },
     { "network",            "ping",                   &ping,                   true  },
     { "network",            "getpeerinfo",            &getpeerinfo,            true  },
+    { "network",            "getcashiers",            &getcashiers,            true  },
     { "network",            "addnode",                &addnode,                true  },
     { "network",            "disconnectnode",         &disconnectnode,         true  },
     { "network",            "getaddednodeinfo",       &getaddednodeinfo,       true  },
