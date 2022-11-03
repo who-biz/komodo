@@ -2089,6 +2089,8 @@ void StartNode(boost::thread_group& threadGroup, CScheduler& scheduler)
     if (GetBoolArg("-nspv_msg", DEFAULT_NSPV_PROCESSING)) {
         nLocalServices |= NODE_NSPV;
         LogPrintf("NSPV messages processing enabled\n");
+        nLocalServices = GetBoolArg("-cashier",0) ? (nLocalServices | NODE_CASHIER) : nLocalServices;
+        LogPrintf(">> %s: nLocalServices(%016x) \n",__func__,nLocalServices);
     }
 
     uiInterface.InitMessage(_("Loading addresses..."));
