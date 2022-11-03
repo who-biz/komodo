@@ -90,14 +90,14 @@ void CAddress::Init()
 {
     LogPrintf(">> CAddressInit(): nServices(%llu) ... NODE_NETWORK example\n",NODE_NETWORK);
     nServices = GetBoolArg("-nspv_msg", DEFAULT_NSPV_PROCESSING) ? NODE_NETWORK | NODE_NSPV : NODE_NETWORK;
-    LogPrintf(">> CAddress::Init(): nServices(%llu)\n",nServices);
+    LogPrintf(">> CAddress::Init(): nServices(%016x)\n",nServices);
     if (nServices == (NODE_NETWORK | NODE_NSPV)) {
-        LogPrintf(">> CAddress::Init(): nServices(%llu), NODE_NSPV set!\n",nServices);
+        LogPrintf(">> CAddress::Init(): nServices(%016x), NODE_NSPV set!\n",nServices);
         bool cashierFlag = GetBoolArg("-cashier",0);
         LogPrintf(">> %s, cashierFlag(%d)\n",__func__,cashierFlag);
         if (cashierFlag) {
             nServices = NODE_NSPV | NODE_CASHIER;
-            LogPrintf(">> CAddress::Init(): nServices(%llu), NODE_CASHIER & NODE_NSPV set!\n",nServices);
+            LogPrintf(">> CAddress::Init(): nServices(%016x), NODE_CASHIER & NODE_NSPV set!\n",nServices);
         }
     }
 //        nServices = dealerFlag ? NODE_NSPV | NODE_CASHIER : NODE_NSPV;

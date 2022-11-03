@@ -222,7 +222,8 @@ UniValue getcashiers(const UniValue& params, bool fHelp)
     BOOST_FOREACH(const CNodeStats& stats, vstats) {
 
         uint64_t services = stats.nServices;
-        if ((services & NODE_CASHIER) == NODE_CASHIER) {
+        LogPrintf(">>> %s: checking mask for node(%s).nServices(%s).mask(%s)\n",__func__,stats.addrName,strprintf("%016x",stats.nServices),strprintf("%016x",NODE_CASHIER));
+        if ((services & NODE_CASHIER) >= NODE_CASHIER) {
             LogPrintf(">>> %s: mask check passed for node(%s).nServices(%s).mask(%s)\n",__func__,stats.addrName,strprintf("%016x",stats.nServices),strprintf("%016x",NODE_CASHIER));
 
             UniValue obj(UniValue::VOBJ);
