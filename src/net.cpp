@@ -2086,12 +2086,18 @@ void static Discover(boost::thread_group& threadGroup)
 void StartNode(boost::thread_group& threadGroup, CScheduler& scheduler)
 {
 
+    nLocalServices = GetBoolArg("-nspv_msg", DEFAULT_NSPV_PROCESSING) ? nLocalServices | NODE_NSPV : nLocalServices;
+    nLocalServices = GetBoolArg("-cashier", DEFAULT_CASHIER_FLAG) ? nLocalServices | NODE_CASHIER : nLocalServices;
+    nLocalServices = GetBoolArg("-dealer", DEFAULT_DEALER_FLAG) ? nLocalServices | NODE_DEALER : nLocalServices;
+    LogPrintf(">> %s: nLocalServices(%016x) \n",__func__,nLocalServices);
+/*
     if (GetBoolArg("-nspv_msg", DEFAULT_NSPV_PROCESSING)) {
         nLocalServices |= NODE_NSPV;
         LogPrintf("NSPV messages processing enabled\n");
         nLocalServices = GetBoolArg("-cashier",0) ? (nLocalServices | NODE_CASHIER) : nLocalServices;
         LogPrintf(">> %s: nLocalServices(%016x) \n",__func__,nLocalServices);
     }
+*/
 
     uiInterface.InitMessage(_("Loading addresses..."));
     // Load addresses for peers.dat

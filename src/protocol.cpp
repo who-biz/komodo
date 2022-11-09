@@ -90,17 +90,22 @@ void CAddress::Init()
 {
     LogPrintf(">> CAddressInit(): nServices(%llu) ... NODE_NETWORK example\n",NODE_NETWORK);
     nServices = GetBoolArg("-nspv_msg", DEFAULT_NSPV_PROCESSING) ? NODE_NETWORK | NODE_NSPV : NODE_NETWORK;
-    LogPrintf(">> CAddress::Init(): nServices(%016x)\n",nServices);
+    LogPrintf(">> CAddress::Init(): nServices(%016x), after nSPV flag check\n",nServices);
+    nServices = GetBoolArg("-cashier", DEFAULT_CASHIER_FLAG) ? nServices | NODE_CASHIER : nServices;
+    LogPrintf(">> CAddress::Init(): nServices(%016x), after cashier flag check\n",nServices);
+    nServices = GetBoolArg("-dealer", DEFAULT_DEALER_FLAG) ? nServices | NODE_DEALER : nServices;
+    LogPrintf(">> CAddress::Init(): nServices(%016x), after dealer flag check\n",nServices);
+/*
     if (nServices == (NODE_NETWORK | NODE_NSPV)) {
         LogPrintf(">> CAddress::Init(): nServices(%016x), NODE_NSPV set!\n",nServices);
         bool cashierFlag = GetBoolArg("-cashier",0);
         LogPrintf(">> %s, cashierFlag(%d)\n",__func__,cashierFlag);
         if (cashierFlag) {
-            nServices = NODE_NSPV | NODE_CASHIER;
+            nServices =| NODE_CASHIER;
             LogPrintf(">> CAddress::Init(): nServices(%016x), NODE_CASHIER & NODE_NSPV set!\n",nServices);
         }
     }
-//        nServices = dealerFlag ? NODE_NSPV | NODE_CASHIER : NODE_NSPV;
+*/
     nTime = 100000000;
 }
 

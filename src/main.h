@@ -118,6 +118,10 @@ static const int64_t DEFAULT_MAX_TIP_AGE = 24 * 60 * 60;
 
 /** Default NSPV support enabled */
 static const bool DEFAULT_NSPV_PROCESSING = false;
+/** Default Cashier node messaging */
+static const bool DEFAULT_CASHIER_FLAG = false;
+/** Default Dealer node messaging */
+static const bool DEFAULT_DEALER_FLAG = false;
 
 //static const bool DEFAULT_ADDRESSINDEX = false;
 //static const bool DEFAULT_SPENTINDEX = false;
