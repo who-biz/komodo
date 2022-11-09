@@ -267,6 +267,7 @@ static const CRPCCommand vRPCCommands[] =
     { "network",            "getnettotals",           &getnettotals,           true  },
     { "network",            "getpeerinfo",            &getpeerinfo,            true  },
     { "network",            "getcashiers",            &getcashiers,            true  },
+    { "network",            "getdealers",             &getdealers,             true  },
     { "network",            "ping",                   &ping,                   true  },
     { "network",            "setban",                 &setban,                 true  },
     { "network",            "listbanned",             &listbanned,             true  },

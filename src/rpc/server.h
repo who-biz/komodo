@@ -197,6 +197,7 @@ extern UniValue getsnapshot(const UniValue& params, bool fHelp);
 extern UniValue getaddressbalance(const UniValue& params, bool fHelp);
 extern UniValue getpeerinfo(const UniValue& params, bool fHelp);
 extern UniValue getcashiers(const UniValue& params, bool fHelp);
+extern UniValue getdealers(const UniValue& params, bool fHelp);
 extern UniValue ping(const UniValue& params, bool fHelp);
 extern UniValue addnode(const UniValue& params, bool fHelp);
 extern UniValue disconnectnode(const UniValue& params, bool fHelp);
