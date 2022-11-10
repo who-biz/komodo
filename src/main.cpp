@@ -9014,19 +9014,24 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 
     // cashier & dealer message processing
     else if ((GetBoolArg("-cashier", DEFAULT_CASHIER_FLAG) || GetBoolArg("-dealer", DEFAULT_DEALER_FLAG)) &&
-             (strCommand == "gameReq" || strCommand == "gameResp")) {
+             (strCommand == "gameReq" /*|| strCommand == "gameResp"*/)) {
 
         LogPrintf(">>>> %s: strCommand(%s), vRecv(%s)\n",__func__,strCommand,HexStr(vRecv.begin(),vRecv.end()));
         std::vector<uint8_t> payload;
         vRecv >> payload;
 
-        if (strCommand == "gameReq") {
-            LogPrintf(">>> %s: calling chips_gamereq... \n",__func__);
-            chips_gamereq(pfrom, payload);
-        } else if (strCommand == "gameResp") {
-            LogPrintf(">>> %s: calling chips_gameresp... \n",__func__);
-            chips_gameresp(pfrom, payload);
-        }
+        //if (strCommand == "gameReq") {
+        LogPrintf(">>> %s: calling chips_gamereq... \n",__func__);
+        chips_gamereq(pfrom, payload);
+        return true;
+    }
+
+    else if (strCommand == "gameResp") {
+        LogPrintf(">>>> %s: strCommand(%s), vRecv(%s)\n",__func__,strCommand,HexStr(vRecv.begin(),vRecv.end()));
+        std::vector<uint8_t> payload;
+        vRecv >> payload;
+        LogPrintf(">>> %s: calling chips_gameresp... \n",__func__);
+        chips_gameresp(pfrom, payload);
         return true;
     }
 
