@@ -224,7 +224,9 @@ void chips_gameresp(CNode *pfrom,std::vector<uint8_t> response) // received a re
     int32_t len; uint32_t timestamp = (uint32_t)time(NULL);
     if ( (len= response.size()) > 0 ) {
         if ( response[0] == CHIPS_GAMEDATARESP) {
+            LogPrintf(">>> (%s): prior to gamedata_purge...\n",__func__);
             CHIPS_gamedata_purge(&CHIPS_gamedataresult);
+            LogPrintf(">>> (%s): prior to rwgamedata...\n",__func__);
             CHIPS_rwgamedataresp(0,&response[1],&CHIPS_gamedataresult,len);
             LogPrintf(">>> %s: got CHIPS gamedata response %u size.%d retcode.%d\n",__func__,timestamp,(int32_t)response.size(),CHIPS_gamedataresult.retcode);
         } else {
