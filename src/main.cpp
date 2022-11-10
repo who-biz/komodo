@@ -9022,10 +9022,10 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 
         if (strCommand == "gameReq") {
             LogPrintf(">>> %s: calling chips_gamereq... \n",__func__);
-//            chips_gamereq(pfrom, payload);
+            chips_gamereq(pfrom, payload);
         } else if (strCommand == "gameResp") {
             LogPrintf(">>> %s: calling chips_gameresp... \n",__func__);
-//            chips_gameresp(pfrom, payload);
+            chips_gameresp(pfrom, payload);
         }
         return true;
     }
