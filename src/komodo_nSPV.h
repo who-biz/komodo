@@ -445,6 +445,20 @@ void NSPV_remoterpc_purge(struct NSPV_remoterpcresp *ptr)
         memset(ptr,0,sizeof(*ptr));
 }
 
+int32_t CHIPS_rwgamedataresp(int32_t rwflag,uint8_t *serialized,struct CHIPS_gamedataresp *ptr, int32_t slen)
+{
+    int32_t len = 0;
+    len += iguana_rwbuf(rwflag,&serialized[len],slen-len,(uint8_t*)ptr->hex);
+    len += iguana_rwnum(rwflag,&serialized[len],sizeof(ptr->retcode),&ptr->retcode);
+    return(len);
+}
+
+void CHIPS_gamedata_purge(struct CHIPS_gamedataresp *ptr)
+{
+    if ( ptr != 0 )
+        memset(ptr,0,sizeof(*ptr));
+}
+
 // useful utility functions
 
 uint256 NSPV_doublesha256(uint8_t *data,int32_t datalen)

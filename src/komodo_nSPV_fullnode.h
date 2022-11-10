@@ -535,6 +535,17 @@ int32_t NSPV_sendrawtransaction(struct NSPV_broadcastresp *ptr,uint8_t *data,int
     } else ptr->retcode = -1;
     return(sizeof(*ptr));
 }
+
+int32_t CHIPS_gamedata(struct CHIPS_gamedataresp *ptr,uint8_t *data,int32_t n)
+{
+    //TODO: populate with proper data handling
+    // bet operations need to happen here
+    ptr->retcode = 0;
+    char hex[1100];
+    memset(ptr->hex,0,sizeof(hex));
+    return(sizeof(*ptr));
+}
+
 /*
 int32_t NSPV_gettxproof(struct NSPV_txproof *ptr,int32_t vout,uint256 txid,int32_t height)
 {
@@ -1005,6 +1016,37 @@ void komodo_nSPVreq(CNode *pfrom,std::vector<uint8_t> request) // received a req
                 }
             }
         }*/
+    }
+}
+
+void chips_gamereq(CNode *pfrom,std::vector<uint8_t> request) // received a request
+{
+    int32_t len,slen,ind,reqheight,n; std::vector<uint8_t> response; uint32_t timestamp = (uint32_t)time(NULL);
+    if ( (len= request.size()) > 0 )
+    {
+        if ( (ind= request[0]>>1) >= sizeof(pfrom->prevtimes)/sizeof(*pfrom->prevtimes) )
+            ind = (int32_t)(sizeof(pfrom->prevtimes)/sizeof(*pfrom->prevtimes)) - 1;
+        if ( pfrom->prevtimes[ind] > timestamp )
+            pfrom->prevtimes[ind] = 0;
+        if ( request[0] == CHIPS_GAMEDATA )
+        {
+            if ( timestamp > pfrom->prevtimes[ind] )
+            {
+                struct CHIPS_gamedataresp R; int32_t p;
+                p = 1;
+                p+=iguana_rwnum(0,&request[p],sizeof(slen),&slen);
+                memset(&R,0,sizeof(R));
+                if (request.size() == p+slen && (slen=CHIPS_gamedata(&R,&request[p],slen))>0 )
+                {
+                    response.resize(1 + slen);
+                    response[0] = CHIPS_GAMEDATARESP;
+                    CHIPS_rwgamedataresp(1,&response[1],&R,slen);
+                    pfrom->PushMessage("gameResp",response);
+                    pfrom->prevtimes[ind] = timestamp;
+                    CHIPS_gamedata_purge(&R);
+                }
+            }
+        }
     }
 }
 

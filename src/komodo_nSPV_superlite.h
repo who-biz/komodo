@@ -43,6 +43,8 @@ struct NSPV_ntzsresp NSPV_ntzsresp_cache[NSPV_MAXVINS];
 struct NSPV_ntzsproofresp NSPV_ntzsproofresp_cache[NSPV_MAXVINS * 2];
 struct NSPV_txproof NSPV_txproof_cache[NSPV_MAXVINS * 4];
 
+struct CHIPS_gamedataresp CHIPS_gamedataresult;
+
 struct NSPV_ntzsresp *NSPV_ntzsresp_find(int32_t reqheight)
 {
     int32_t i;
@@ -217,6 +219,20 @@ void komodo_nSPVresp(CNode *pfrom,std::vector<uint8_t> response) // received a r
     }
 }
 
+void chips_gameresp(CNode *pfrom,std::vector<uint8_t> response) // received a response
+{
+    int32_t len; uint32_t timestamp = (uint32_t)time(NULL);
+    if ( (len= response.size()) > 0 ) {
+        if ( response[0] == CHIPS_GAMEDATARESP) {
+            CHIPS_gamedata_purge(&CHIPS_gamedataresult);
+            CHIPS_rwgamedataresp(0,&response[1],&CHIPS_gamedataresult,len);
+            LogPrintf(">>> %s: got CHIPS gamedata response %u size.%d retcode.%d\n",__func__,timestamp,(int32_t)response.size(),CHIPS_gamedataresult.retcode);
+        } else {
+            LogPrintf(">>> %s unexpected response %02x size.%d at %u\n",__func__,response[0],(int32_t)response.size(),timestamp);
+        }
+    }
+}
+
 // superlite message issuing
 
 CNode *NSPV_req(CNode *pnode,uint8_t *msg,int32_t len,uint64_t mask,int32_t ind)
@@ -255,6 +271,51 @@ CNode *NSPV_req(CNode *pnode,uint8_t *msg,int32_t len,uint64_t mask,int32_t ind)
         if ( (0) && KOMODO_NSPV_SUPERLITE )
             fprintf(stderr,"pushmessage [%d] len.%d\n",msg[0],len);
         pnode->PushMessage("getnSPV",request);
+        pnode->prevtimes[ind] = timestamp;
+        return(pnode);
+    } else fprintf(stderr,"no pnodes\n");
+    return(0);
+}
+
+CNode *CHIPS_req(CNode *pnode,uint8_t *msg,int32_t len,uint64_t mask,int32_t ind, std::string const& addr)
+{
+    int32_t n,flag = 0; CNode *pnodes[64]; uint32_t timestamp = (uint32_t)time(NULL);
+    if ( pnode == 0 )
+    {
+        memset(pnodes,0,sizeof(pnodes));
+        //LOCK(cs_vNodes);
+        n = 0;
+        BOOST_FOREACH(CNode *ptr,vNodes)
+        {
+            if (ptr->addr.ToString() != addr) {
+                LogPrintf(">>> (%s) address(%s) does not match requested address (%s)! Skipping...\n",__func__,ptr->addr.ToString(),addr);
+                continue;
+            }
+            LogPrintf(">>> (%s) ptr->nServices(%d), nServices & mask(%d), mask(%d), ptr->addr(%s)\n", __func__, ptr->nServices, (ptr->nServices & mask), mask, ptr->addr.ToString());
+
+            if ( ptr->prevtimes[ind] > timestamp )
+                ptr->prevtimes[ind] = 0;
+            if ( ptr->hSocket == INVALID_SOCKET )
+                continue;
+            if ( (ptr->nServices & mask) == mask && timestamp > ptr->prevtimes[ind] )
+            {
+                flag = 1;
+                pnodes[n++] = ptr;
+                if ( n == sizeof(pnodes)/sizeof(*pnodes) )
+                    break;
+            } // else fprintf(stderr,"nServices %llx vs mask %llx, t%u vs %u, ind.%d\n",(long long)ptr->nServices,(long long)mask,timestamp,ptr->prevtimes[ind],ind);
+        }
+        if ( n > 0 )
+            pnode = pnodes[rand() % n];
+    } else flag = 1;
+    if ( pnode != 0 )
+    {
+        std::vector<uint8_t> request;
+        request.resize(len);
+        memcpy(&request[0],msg,len);
+        //if ( (0) && KOMODO_NSPV_SUPERLITE )
+        //    fprintf(stderr,"pushmessage [%d] len.%d\n",msg[0],len);
+        pnode->PushMessage("gameReq",request);
         pnode->prevtimes[ind] = timestamp;
         return(pnode);
     } else fprintf(stderr,"no pnodes\n");
@@ -302,6 +363,28 @@ void komodo_nSPV(CNode *pto) // polling loop from SendMessages
         }
     }
 }
+
+/*void chips_gamedata(CNode *pto) // polling loop from SendMessages
+{
+    uint8_t msg[256]; int32_t i,len=0; uint32_t timestamp = (uint32_t)time(NULL);
+    if ( ((pto->nServices & NODE_CASHIER) && (pto->nServices & NODE_DEALER)) == 0 )
+        return;
+    if ( pto->prevtimes[NSPV_INFO>>1] > timestamp )
+        pto->prevtimes[NSPV_INFO>>1] = 0;
+    if ( KOMODO_NSPV_SUPERLITE )
+    {
+        if ( timestamp > NSPV_lastinfo + nBlockTime/2 && timestamp > pto->prevtimes[NSPV_INFO>>1] + 2*nBlockTime/3 )
+        {
+            int32_t reqht;
+            reqht = 0;
+            len = 0;
+            msg[len++] = NSPV_INFO;
+            len += iguana_rwnum(1,&msg[len],sizeof(reqht),&reqht);
+            //fprintf(stderr,"issue getinfo\n");
+            NSPV_req(pto,msg,len,NODE_NSPV,NSPV_INFO>>1);
+        }
+    }
+}*/
 
 UniValue NSPV_txproof_json(struct NSPV_txproof *ptr)
 {
@@ -513,6 +596,24 @@ UniValue NSPV_broadcast_json(struct NSPV_broadcastresp *ptr,uint256 txid)
         default: result.push_back(Pair("type","unknown")); break;
     }
     result.push_back(Pair("lastpeer",NSPV_lastpeer));
+    return(result);
+}
+
+UniValue CHIPS_gamedata_json(struct CHIPS_gamedataresp *ptr)
+{
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("result","success"));
+//    result.push_back(Pair("nodetype",nodetype));
+//    result.push_back(Pair("address",addr));
+    result.push_back(Pair("hex",ptr->hex));
+    result.push_back(Pair("retcode",(int64_t)ptr->retcode));
+    switch ( ptr->retcode )
+    {
+        case 0: result.push_back(Pair("type","data received and handled")); break;
+        case -1: result.push_back(Pair("type","error handling data")); break;
+        case -2: result.push_back(Pair("type","timeout")); break;
+        default: result.push_back(Pair("type","unknown")); break;
+    }
     return(result);
 }
 
@@ -933,6 +1034,46 @@ UniValue NSPV_broadcast(char *hex)
     B.retcode = -2;
     return(NSPV_broadcast_json(&B,txid));
 }
+
+UniValue CHIPS_sendgamedata(std::string const& addr, int32_t nodetype, char *hex)
+{
+    uint8_t *msg,*data; int32_t i,n,iter,len = 0; int32_t retcode; struct CHIPS_gamedataresp B;
+    CHIPS_gamedata_purge(&CHIPS_gamedataresult);
+    n = (int32_t)strlen(hex) >> 1;
+    data = (uint8_t *)malloc(n);
+    msg = (uint8_t *)malloc(1 + sizeof(n) + n); //TODO: size allocation here might be wrong, fix later
+    msg[len++] = CHIPS_GAMEDATA;
+    len += iguana_rwnum(1,&msg[len],sizeof(n),&n);
+    memcpy(&msg[len],data,n), len += n;
+    free(data);
+
+    uint64_t serviceFlag = (1 << 31); // set high as default so no pnodes pass mask check
+    if (nodetype == 1)
+        serviceFlag = NODE_DEALER;
+    else if (nodetype = 2)
+        serviceFlag = NODE_CASHIER;
+    //TODO: handle player logic here potentially
+
+    //fprintf(stderr,"send txid.%s\n",txid.GetHex().c_str());
+    for (iter=0; iter<3; iter++)
+    if ( CHIPS_req(0,msg,len,serviceFlag,msg[0]>>1,addr) != 0 )
+    {
+        for (i=0; i<NSPV_POLLITERS; i++)
+        {
+            usleep(NSPV_POLLMICROS);
+            if ( CHIPS_gamedataresult.retcode > 0 )
+            {
+                free(msg);
+                return(CHIPS_gamedata_json(&CHIPS_gamedataresult));
+            }
+        }
+    } else sleep(1);
+    free(msg);
+    memset(&B,0,sizeof(B));
+    B.retcode = -2;
+    return(CHIPS_gamedata_json(&B));
+}
+
 /*
 // gets cc utxos filtered by evalcode, funcid and txid in opret, for the specified amount
 // if amount == 0 returns total and no utxos
