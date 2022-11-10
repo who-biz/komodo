@@ -1053,7 +1053,7 @@ UniValue sendgamedata(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 3)
         throw runtime_error(
-            "sendgamedata \"node\" \"0|1|2\" \"hex\" \n"
+            "sendgamedata \"node\" nodetype \"hex\" \n"
             "\nAttempts to send game data to specified peer.\n"
             "\nArguments:\n"
             "1. \"node\"      (string, required) The node (see getpeerinfo, getcashiers, or getdealers for nodes)\n"
@@ -1061,8 +1061,7 @@ UniValue sendgamedata(const UniValue& params, bool fHelp)
             "3. \"hex\"       (string, required) Hex-encoded data to be sent to specified node and nodetype\n"
             "\nExamples:\n"
             + HelpExampleCli("sendgamedata", "\"192.168.0.6:8233\" 0 \"0a3d4c5d6e00\"")
-            + HelpExampleCli("sendgamedata", "\"192.168.0.6:8233\" 1 \"0a3d4c5d6e00\"")
-            + HelpExampleCli("sendgamedata", "\"192.168.0.6:8233\" 2 \"0a3d4c5d6e00\"")
+            + HelpExampleRpc("sendgamedata", "\"192.168.0.6:8233\", 2, \"0a3d4c5d6e00\"")
         );
      return CHIPS_sendgamedata(params[0].get_str(),params[1].get_int(),params[2].get_str().c_str());
 }
