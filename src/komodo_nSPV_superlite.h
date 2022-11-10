@@ -1035,7 +1035,7 @@ UniValue NSPV_broadcast(char *hex)
     return(NSPV_broadcast_json(&B,txid));
 }
 
-UniValue CHIPS_sendgamedata(std::string const& addr, int32_t nodetype, char *hex)
+UniValue CHIPS_sendgamedata(std::string const& addr, int32_t nodetype, char const *hex)
 {
     uint8_t *msg,*data; int32_t i,n,iter,len = 0; int32_t retcode; struct CHIPS_gamedataresp B;
     CHIPS_gamedata_purge(&CHIPS_gamedataresult);

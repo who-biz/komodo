@@ -1016,6 +1016,7 @@ UniValue NSPV_addressutxos(char *coinaddr,int32_t CCflag,int32_t skipcount,int32
 UniValue NSPV_mempooltxids(char *coinaddr,int32_t CCflag,uint8_t funcid,uint256 txid,int32_t vout);*/
 
 UniValue NSPV_broadcast(char *hex);
+UniValue CHIPS_sendgamedata(std::string const& addr, int32_t nodetype, char const* hex);
 
 /*UniValue NSPV_spend(char *srcaddr,char *destaddr,int64_t satoshis);
 UniValue NSPV_spentinfo(uint256 txid,int32_t vout);
@@ -1046,6 +1047,24 @@ UniValue nspv_broadcast(const UniValue& params, bool fHelp)
     if ( KOMODO_NSPV_FULLNODE )
         throw runtime_error("-nSPV=1 must be set to use nspv\n");
     return(NSPV_broadcast((char *)params[0].get_str().c_str()));
+}
+
+UniValue sendgamedata(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 3)
+        throw runtime_error(
+            "sendgamedata \"node\" \"0|1|2\" \"hex\" \n"
+            "\nAttempts to send game data to specified peer.\n"
+            "\nArguments:\n"
+            "1. \"node\"      (string, required) The node (see getpeerinfo, getcashiers, or getdealers for nodes)\n"
+            "2. \"nodetype\"  (numeric, required) Describes the node type we are sending data to: '0' to player node, '1' to dealer node, '2' to cashier node.\n"
+            "3. \"hex\"       (string, required) Hex-encoded data to be sent to specified node and nodetype\n"
+            "\nExamples:\n"
+            + HelpExampleCli("sendgamedata", "\"192.168.0.6:8233\" 0 \"0a3d4c5d6e00\"")
+            + HelpExampleCli("sendgamedata", "\"192.168.0.6:8233\" 1 \"0a3d4c5d6e00\"")
+            + HelpExampleCli("sendgamedata", "\"192.168.0.6:8233\" 2 \"0a3d4c5d6e00\"")
+        );
+     return CHIPS_sendgamedata(params[0].get_str(),params[1].get_int(),params[2].get_str().c_str());
 }
 
 
