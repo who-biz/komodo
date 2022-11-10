@@ -541,8 +541,8 @@ int32_t CHIPS_gamedata(struct CHIPS_gamedataresp *ptr,uint8_t *data,int32_t n)
     //TODO: populate with proper data handling
     // bet operations need to happen here
     ptr->retcode = 1;
-    ptr->hex = (uint8_t*)malloc(sizeof(*data));
-    memcpy(ptr->hex,data,sizeof(*data));
+    ptr->hex = (uint8_t*)malloc(n);
+    memcpy(ptr->hex,data,n);
     return(sizeof(*ptr));
 }
 
@@ -1040,6 +1040,7 @@ void chips_gamereq(CNode *pfrom,std::vector<uint8_t> request) // received a requ
                 LogPrintf(">>> %s: p(%d) slen(%d) request.size(%llu) gamedata(%d)\n",__func__,p,slen,request.size(),gamedata);
                 if (request.size() == p+slen && (slen=CHIPS_gamedata(&R,&request[p],slen))>0 )
                 {
+                    LogPrintf(">>> %s: sizecheck passed!\n",__func__);
                     response.resize(1 + slen);
                     response[0] = CHIPS_GAMEDATARESP;
                     CHIPS_rwgamedataresp(1,&response[1],&R,slen);
