@@ -541,8 +541,8 @@ int32_t CHIPS_gamedata(struct CHIPS_gamedataresp *ptr,uint8_t *data,int32_t n)
     //TODO: populate with proper data handling
     // bet operations need to happen here
     ptr->retcode = 1;
-    ptr->hex = (uint8_t*)malloc(n);
-    memcpy(ptr->hex,data,n);
+    ptr->hex = (uint8_t*)malloc(sizeof(*data));
+    memcpy(ptr->hex,data,sizeof(*data));
     return(sizeof(*ptr));
 }
 

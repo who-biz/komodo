@@ -447,8 +447,10 @@ void NSPV_remoterpc_purge(struct NSPV_remoterpcresp *ptr)
 
 int32_t CHIPS_rwgamedataresp(int32_t rwflag,uint8_t *serialized,struct CHIPS_gamedataresp *ptr, int32_t slen)
 {
+    LogPrintf(">>> rwgamedata called, slen = %d, sizeof(*ptr)= %llu\n",slen,sizeof(*ptr));
     int32_t len = 0;
-    len += iguana_rwbuf(rwflag,&serialized[len],slen-len,ptr->hex);
+    len += iguana_rwbuf(rwflag,&serialized[len],sizeof(*ptr->hex),ptr->hex);
+    LogPrintf(">>> after rwbuf...\n");
     len += iguana_rwnum(rwflag,&serialized[len],sizeof(ptr->retcode),&ptr->retcode);
     return(len);
 }
