@@ -1036,6 +1036,8 @@ void chips_gamereq(CNode *pfrom,std::vector<uint8_t> request) // received a requ
                 p = 1;
                 p+=iguana_rwnum(0,&request[p],sizeof(slen),&slen);
                 memset(&R,0,sizeof(R));
+                int32_t gamedata = CHIPS_gamedata(&R,&request[p],slen);
+                LogPrintf(">>> %s: p(%d) slen(%d) request.size(%llu) gamedata(%d)\n",__func__,p,slen,request.size(),gamedata);
                 if (request.size() == p+slen && (slen=CHIPS_gamedata(&R,&request[p],slen))>0 )
                 {
                     response.resize(1 + slen);
