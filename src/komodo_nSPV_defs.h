@@ -193,7 +193,7 @@ struct NSPV_remoterpcresp
 
 struct CHIPS_gamedataresp
 {
-   char hex[11000];
+   uint8_t* hex;
    int32_t retcode;
 };
 
