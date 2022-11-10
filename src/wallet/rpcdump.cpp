@@ -1060,9 +1060,15 @@ UniValue sendgamedata(const UniValue& params, bool fHelp)
             "2. \"nodetype\"  (numeric, required) Describes the node type we are sending data to: '0' to player node, '1' to dealer node, '2' to cashier node.\n"
             "3. \"hex\"       (string, required) Hex-encoded data to be sent to specified node and nodetype\n"
             "\nExamples:\n"
-            + HelpExampleCli("sendgamedata", "\"192.168.0.6:8233\" 0 \"0a3d4c5d6e00\"")
+            + HelpExampleCli("sendgamedata", "\"192.168.0.6:8233\" 2 \"0a3d4c5d6e00\"")
             + HelpExampleRpc("sendgamedata", "\"192.168.0.6:8233\", 2, \"0a3d4c5d6e00\"")
         );
+
+     //LogPrintf(">>> (%s): param1(%s), param2(%s), param3(%s)\n",__func__,params[0].get_str(),params[1].get_str(),params[2].get_str());
+
+     //int nodetype = std::stoi(params[1].get_str());
+     // workaround for param type discernment "JSON value is not an int"
+
      return CHIPS_sendgamedata(params[0].get_str(),params[1].get_int(),params[2].get_str().c_str());
 }
 

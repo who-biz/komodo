@@ -1622,6 +1622,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "estimatepriority", 0 },
     { "prioritisetransaction", 1 },
     { "prioritisetransaction", 2 },
+    { "sendgamedata", 1 },
     { "setban", 2 },
     { "setban", 3 },
     { "getspentinfo", 0},
