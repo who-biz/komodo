@@ -542,6 +542,7 @@ int32_t CHIPS_gamedata(struct CHIPS_gamedataresp *ptr,uint8_t *data,int32_t n)
     // bet operations need to happen here
     ptr->retcode = 1;
     ptr->hex = (uint8_t*)malloc(sizeof(*data));
+    LogPrintf(">>> (%s): sizeof(*data) = (%llu), n = %d\n",__func__,sizeof(*data),n);
     memcpy(ptr->hex,data,sizeof(*data));
     return(sizeof(*ptr));
 }
@@ -1035,8 +1036,8 @@ void chips_gamereq(CNode *pfrom,std::vector<uint8_t> request) // received a requ
                 struct CHIPS_gamedataresp R; int32_t p;
                 p = 1;
                 p+=iguana_rwnum(0,&request[p],sizeof(slen),&slen);
-                R.hex = (uint8_t*)malloc(request.size()-1-sizeof(int32_t));
                 memset(&R,0,sizeof(R));
+                R.hex = (uint8_t*)malloc(request.size()-1-sizeof(int32_t));
                 int32_t gamedata = CHIPS_gamedata(&R,&request[p],slen);
                 LogPrintf(">>> %s: p(%d) slen(%d) request.size(%llu) gamedata(%d)\n",__func__,p,slen,request.size(),gamedata);
                 if (request.size() == p+slen && (slen=gamedata)>0 )
