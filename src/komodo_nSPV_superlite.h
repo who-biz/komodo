@@ -1043,14 +1043,14 @@ UniValue CHIPS_sendgamedata(std::string const& addr, int32_t nodetype, char cons
     CHIPS_gamedata_purge(&CHIPS_gamedataresult);
     n = (int32_t)strlen(hex) >> 1;
     hex = (char*)malloc(n);
-    memcpy(&hex[0],hexdata,sizeof(*hexdata-1));
+    memcpy(&hex[0],hexdata,n);
     data = (uint8_t *)malloc(n);
     decode_hex(data,n,hex);
     msg = (uint8_t *)malloc(1 + sizeof(n) + n); //TODO: size allocation here might be wrong, fix later
     msg[len++] = CHIPS_GAMEDATA;
     len += iguana_rwnum(1,&msg[len],sizeof(n),&n);
     memcpy(&msg[len],data,n), len += n;
-    LogPrintf(">>> (%s): n(%d) hexsize(%llu) msgsize(%llu), datasize(%llu), leng(%d)\n",__func__,n,sizeof(*hex),sizeof(*msg),sizeof(*data),n);
+    LogPrintf(">>> (%s): n(%d) hexsize(%llu) msgsize(%llu), datasize(%llu), leng(%d)\n",__func__,n,sizeof(*hex),n);
     free(data);
 
     uint64_t serviceFlag = (1 << 31); // set high as default so no pnodes pass mask check
