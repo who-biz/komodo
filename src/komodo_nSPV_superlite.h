@@ -1050,7 +1050,7 @@ UniValue CHIPS_sendgamedata(std::string const& addr, int32_t nodetype, char cons
     msg[len++] = CHIPS_GAMEDATA;
     len += iguana_rwnum(1,&msg[len],sizeof(n),&n);
     memcpy(&msg[len],data,n), len += n;
-    LogPrintf(">>> (%s): n(%d) hexsize(%llu) msgsize(%llu), datasize(%llu), leng(%d)\n",__func__,n,sizeof(*hex),n);
+    LogPrintf(">>> (%s): n(%d) len(%d)\n",__func__,n,len);
     free(data);
 
     uint64_t serviceFlag = (1 << 31); // set high as default so no pnodes pass mask check

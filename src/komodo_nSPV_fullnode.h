@@ -542,7 +542,7 @@ int32_t CHIPS_gamedata(struct CHIPS_gamedataresp *ptr,uint8_t *data,int32_t n)
     // bet operations need to happen here
     ptr->retcode = 1;
     ptr->hex = (uint8_t*)malloc(n);
-    LogPrintf(">>> (%s): sizeof(*data) = (%llu), n = %d\n",__func__,sizeof(*data),n);
+    LogPrintf(">>> (%s): n = %d\n",__func__,n);
     memcpy(ptr->hex,data,n);
     return(sizeof(int32_t)+n);
 }
