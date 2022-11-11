@@ -316,8 +316,7 @@ CNode *CHIPS_req(CNode *pnode,uint8_t *msg,int32_t len,uint64_t mask,int32_t ind
         std::vector<uint8_t> request;
         request.resize(len);
         memcpy(&request[0],msg,len);
-        //if ( (0) && KOMODO_NSPV_SUPERLITE )
-        //    fprintf(stderr,"pushmessage [%d] len.%d\n",msg[0],len);
+        LogPrintf(">>> (%s) request.size() = %llu\n",__func__,request.size());
         pnode->PushMessage("gameReq",request);
         pnode->prevtimes[ind] = timestamp;
         return(pnode);
@@ -1045,6 +1044,7 @@ UniValue CHIPS_sendgamedata(std::string const& addr, int32_t nodetype, char cons
     n = (int32_t)strlen(hex) >> 1;
     data = (uint8_t *)malloc(n);
     msg = (uint8_t *)malloc(1 + sizeof(n) + n); //TODO: size allocation here might be wrong, fix later
+    LogPrintf(">>> (%s): n(%d) hexsize(%llu) msgsize(%llu)\n",__func__,n,sizeof(*hex),sizeof(*msg));
     msg[len++] = CHIPS_GAMEDATA;
     len += iguana_rwnum(1,&msg[len],sizeof(n),&n);
     memcpy(&msg[len],data,n), len += n;
