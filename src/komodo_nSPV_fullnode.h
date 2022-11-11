@@ -1037,7 +1037,7 @@ void chips_gamereq(CNode *pfrom,std::vector<uint8_t> request) // received a requ
                 p = 1;
                 p+=iguana_rwnum(0,&request[p],sizeof(slen),&slen);
                 memset(&R,0,sizeof(R));
-                R.hex = (uint8_t*)malloc(request.size()-1-sizeof(int32_t));
+                //R.hex = (uint8_t*)malloc(request.size()-1-sizeof(int32_t));
                 int32_t gamedata = CHIPS_gamedata(&R,&request[p],slen);
                 LogPrintf(">>> %s: p(%d) slen(%d) request.size(%llu) gamedata(%d)\n",__func__,p,slen,request.size(),gamedata);
                 if (request.size() == p+slen && (slen=gamedata)>0 )

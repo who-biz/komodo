@@ -1037,17 +1037,20 @@ UniValue NSPV_broadcast(char *hex)
     return(NSPV_broadcast_json(&B,txid));
 }
 
-UniValue CHIPS_sendgamedata(std::string const& addr, int32_t nodetype, char const *hex)
+UniValue CHIPS_sendgamedata(std::string const& addr, int32_t nodetype, char const *hexdata)
 {
-    uint8_t *msg,*data; int32_t i,n,iter,len = 0; int32_t retcode; struct CHIPS_gamedataresp B;
+    uint8_t *msg,*data; int32_t i,n,iter,len = 0; int32_t retcode; struct CHIPS_gamedataresp B; char* hex;
     CHIPS_gamedata_purge(&CHIPS_gamedataresult);
     n = (int32_t)strlen(hex) >> 1;
+    hex = (char*)malloc(n);
+    memcpy(&hex[0],hexdata,sizeof(*hexdata-1));
     data = (uint8_t *)malloc(n);
+    decode_hex(data,n,hex);
     msg = (uint8_t *)malloc(1 + sizeof(n) + n); //TODO: size allocation here might be wrong, fix later
-    LogPrintf(">>> (%s): n(%d) hexsize(%llu) msgsize(%llu)\n",__func__,n,sizeof(*hex),sizeof(*msg));
     msg[len++] = CHIPS_GAMEDATA;
     len += iguana_rwnum(1,&msg[len],sizeof(n),&n);
     memcpy(&msg[len],data,n), len += n;
+    LogPrintf(">>> (%s): n(%d) hexsize(%llu) msgsize(%llu), datasize(%llu), leng(%d)\n",__func__,n,sizeof(*hex),sizeof(*msg),sizeof(*data),n);
     free(data);
 
     uint64_t serviceFlag = (1 << 31); // set high as default so no pnodes pass mask check
