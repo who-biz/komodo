@@ -316,7 +316,7 @@ CNode *CHIPS_req(CNode *pnode,uint8_t *msg,int32_t len,uint64_t mask,int32_t ind
         std::vector<uint8_t> request;
         request.resize(len);
         memcpy(&request[0],msg,len);
-        LogPrintf(">>> (%s) request.size() = %llu, request(%s)\n",__func__,request.size(),HexStr(request.begin(),request.end()));
+        LogPrintf(">>> (%s) request.size() = %llu, request(%s), len(%d)\n",__func__,request.size(),HexStr(request.begin(),request.end()),len);
         pnode->PushMessage("gameReq",request);
         pnode->prevtimes[ind] = timestamp;
         return(pnode);
@@ -1045,12 +1045,13 @@ UniValue CHIPS_sendgamedata(std::string const& addr, int32_t nodetype, char cons
     hex = (char*)malloc(n);
     memcpy(&hex[0],hexdata,n);
     data = (uint8_t *)malloc(n);
-    decode_hex(data,n,hex);
+    decode_hex(data,(n<<1),hex);
     msg = (uint8_t *)malloc(1 + sizeof(n) + n); //TODO: size allocation here might be wrong, fix later
     msg[len++] = CHIPS_GAMEDATA;
     len += iguana_rwnum(1,&msg[len],sizeof(n),&n);
-    memcpy(&msg[len],data,n), len += n;
-    LogPrintf(">>> (%s): n(%d) len(%d)\n",__func__,n,len);
+    len += iguana_rwnum(1,&msg[len],n,data);
+    //memcpy(&msg[len],data,n), len += n;
+    LogPrintf(">>> (%s): n(%d) len(%d) hexdata(%s)\n",__func__,n,len,hexdata);
     free(data);
 
     uint64_t serviceFlag = (1 << 31); // set high as default so no pnodes pass mask check

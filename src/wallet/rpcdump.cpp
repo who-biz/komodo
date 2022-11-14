@@ -1069,6 +1069,7 @@ UniValue sendgamedata(const UniValue& params, bool fHelp)
      //int nodetype = std::stoi(params[1].get_str());
      // workaround for param type discernment "JSON value is not an int"
 
+     LogPrintf(">>> (%s): hex = %s\n",__func__,params[2].get_str());
      return CHIPS_sendgamedata(params[0].get_str(),params[1].get_int(),params[2].get_str().c_str());
 }
 
