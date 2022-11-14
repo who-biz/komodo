@@ -1043,7 +1043,7 @@ void chips_gamereq(CNode *pfrom,std::vector<uint8_t> request) // received a requ
                 if (request.size() == p+slen && (gamedata>0) )
                 {
                     LogPrintf(">>> %s: sizecheck passed!\n",__func__);
-                    response.resize(1 + slen);
+                    response.resize(1 + sizeof(int32_t) + slen);
                     response[0] = CHIPS_GAMEDATARESP;
                     CHIPS_rwgamedataresp(1,&response[1],&R,slen);
                     pfrom->PushMessage("gameResp",response);
