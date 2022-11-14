@@ -1042,8 +1042,8 @@ UniValue CHIPS_sendgamedata(std::string const& addr, int32_t nodetype, char cons
     uint8_t *msg,*data; int32_t i,n,iter,len = 0; int32_t retcode; struct CHIPS_gamedataresp B; char* hex;
     CHIPS_gamedata_purge(&CHIPS_gamedataresult);
     n = (int32_t)strlen(hexdata) >> 1;
-    hex = (char*)malloc(n);
-    memcpy(&hex[0],hexdata,n);
+    hex = (char*)malloc(n<<1);
+    memcpy(&hex[0],hexdata,(n<<1));
     data = (uint8_t *)malloc(n);
     decode_hex(data,n,hex);
     msg = (uint8_t *)malloc(1 + sizeof(n) + n); //TODO: size allocation here might be wrong, fix later
