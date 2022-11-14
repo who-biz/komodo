@@ -1070,7 +1070,7 @@ UniValue CHIPS_sendgamedata(std::string const& addr, int32_t nodetype, char cons
         for (i=0; i<NSPV_POLLITERS; i++)
         {
             usleep(NSPV_POLLMICROS);
-            if ( CHIPS_gamedataresult.retcode > 0 )
+            if ( CHIPS_gamedataresult.retcode >= 0 )
             {
                 free(msg);
                 return(CHIPS_gamedata_json(&CHIPS_gamedataresult));
