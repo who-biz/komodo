@@ -1040,7 +1040,7 @@ void chips_gamereq(CNode *pfrom,std::vector<uint8_t> request) // received a requ
                 //R.hex = (uint8_t*)malloc(request.size()-1-sizeof(int32_t));
                 int32_t gamedata = CHIPS_gamedata(&R,&request[p],slen);
                 LogPrintf(">>> %s: p(%d) slen(%d) request.size(%llu) gamedata(%d)\n",__func__,p,slen,request.size(),gamedata);
-                if (request.size() == p+slen && (slen=gamedata)>0 )
+                if (request.size() == p+slen && (gamedata>0) )
                 {
                     LogPrintf(">>> %s: sizecheck passed!\n",__func__);
                     response.resize(1 + slen);

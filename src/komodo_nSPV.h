@@ -445,14 +445,12 @@ void NSPV_remoterpc_purge(struct NSPV_remoterpcresp *ptr)
         memset(ptr,0,sizeof(*ptr));
 }
 
-int32_t CHIPS_rwgamedataresp(int32_t rwflag,uint8_t *serialized,struct CHIPS_gamedataresp *ptr, int32_t slen)
+int32_t CHIPS_rwgamedataresp(int32_t rwflag,uint8_t *serialized,struct CHIPS_gamedataresp *ptr, int32_t n)
 {
-    LogPrintf(">>> rwgamedata called, slen = %d\n",slen);
+    LogPrintf(">>> rwgamedata called, n = %d\n",n);
     int32_t len = 0;
-    len += iguana_rwbuf(rwflag,&serialized[len],slen,ptr->hex);
-    //TODO: use of slen by itself above may be improper, as this is full length of message...
-    // length of ptr->hex is probably slen-sizeof(int32_t), since i think we embed n length as well
-    // need to double check
+    len += iguana_rwnum(rwflag,&serialized[len],sizeof(int32_t),&n);
+    len += iguana_rwbuf(rwflag,&serialized[len],n,ptr->hex);
     LogPrintf(">>> after rwbuf...\n");
     len += iguana_rwnum(rwflag,&serialized[len],sizeof(ptr->retcode),&ptr->retcode);
     return(len);
