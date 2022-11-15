@@ -232,7 +232,7 @@ void chips_gameresp(CNode *pfrom,std::vector<uint8_t> response) // received a re
             CHIPS_gamedataresult.hex = (uint8_t*)malloc(response.size()-sizeof(int32_t)-1);
             LogPrintf(">>> (%s): prior to rwgamedata... calculated size = (%d)\n",__func__,size);
             CHIPS_rwgamedataresp(0,&response[1],&CHIPS_gamedataresult,size);
-            LogPrintf(">>> %s: got CHIPS gamedata response %u size.%d hexlength.%d retcode.%d nodetype.%u\n",__func__,timestamp,(int32_t)response.size(),CHIPS_gamedataresult.hexlength,CHIPS_gamedataresult.retcode,CHIPS_gamedataresult.nodetype);
+            LogPrintf(">>> %s: got CHIPS gamedata response %u size.%d hexlength.%d retcode.%d nodetype.%d\n",__func__,timestamp,(int32_t)response.size(),CHIPS_gamedataresult.hexlength,CHIPS_gamedataresult.retcode,(int32_t)CHIPS_gamedataresult.nodetype);
         } else {
             LogPrintf(">>> %s unexpected response %02x size.%d at %u\n",__func__,response[0],(int32_t)response.size(),timestamp);
         }
@@ -1065,7 +1065,7 @@ UniValue CHIPS_sendgamedata(std::string const& addr, int32_t nodetype, char cons
     //len += iguana_rwnum(1,&msg[len],n,data);
     memcpy(&msg[len],data,n), len += n;
     len += iguana_rwnum(1,&msg[len],sizeof(uint8_t),&nodetype);
-    LogPrintf(">>> (%s): n(%d) len(%d) hexdata(%s) nodetype(&d)\n",__func__,n,len,hexdata,nodetype);
+    LogPrintf(">>> (%s): n(%d) len(%d) hexdata(%s) nodetype(%d)\n",__func__,n,len,hexdata,(int32_t)nodetype);
     free(data);
 
     uint64_t serviceFlag = (1 << 31); // set high as default so no pnodes pass mask check
