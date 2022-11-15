@@ -543,9 +543,10 @@ int32_t CHIPS_gamedata(struct CHIPS_gamedataresp *ptr,uint8_t *data,int32_t n)
     ptr->retcode = 0;
     ptr->hexlength = n;
     ptr->hex = (uint8_t*)malloc(n);
-    LogPrintf(">>> (%s): n = %d\n",__func__,n);
     memcpy(ptr->hex,data,n);
-    return(sizeof(ptr->hexlength)+n+sizeof(ptr->retcode));
+    memcpy(&ptr->nodetype,&data[n],sizeof(uint8_t));
+    LogPrintf(">>> (%s): n = %d, ptr->nodetype(%u)\n",__func__,n,ptr->nodetype);
+    return(sizeof(ptr->hexlength)+n+sizeof(ptr->retcode)+sizeof(ptr->nodetype));
 }
 
 /*
@@ -1043,7 +1044,7 @@ void chips_gamereq(CNode *pfrom,std::vector<uint8_t> request) // received a requ
                 LogPrintf(">>> %s: p(%d) slen(%d) request.size(%llu) gamedata(%d)\n",__func__,p,slen,request.size(),gamedata);
                 if (request.size() == p+slen && (gamedata>0) )
                 {
-                    response.resize(1 + sizeof(R.hexlength) + slen + sizeof(R.retcode));
+                    response.resize(1 + sizeof(R.hexlength) + slen + sizeof(R.retcode) + sizeof(R.nodetype));
                     LogPrintf(">>> %s: sizecheck passed! response.size(%llu)\n",__func__,response.size());
                     response[0] = CHIPS_GAMEDATARESP;
                     CHIPS_rwgamedataresp(1,&response[1],&R,slen);

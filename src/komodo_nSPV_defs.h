@@ -195,6 +195,7 @@ struct CHIPS_gamedataresp
 {
    int32_t hexlength;
    uint8_t* hex;
+   uint8_t nodetype;
    int32_t retcode;
 };
 

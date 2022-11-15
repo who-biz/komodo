@@ -450,6 +450,7 @@ int32_t CHIPS_rwgamedataresp(int32_t rwflag,uint8_t *serialized,struct CHIPS_gam
     int32_t len = 0;
     len += iguana_rwnum(rwflag,&serialized[len],sizeof(int32_t),&ptr->hexlength);
     len += iguana_rwbuf(rwflag,&serialized[len],ptr->hexlength,ptr->hex);
+    len += iguana_rwnum(rwflag,&serialized[len],sizeof(uint8_t),&ptr->nodetype);
     len += iguana_rwnum(rwflag,&serialized[len],sizeof(int32_t),&ptr->retcode);
     LogPrintf(">>> rwgamedata called, n = %d, ptr->hexlength(%d), ptr->retcode(%d)\n",n,ptr->hexlength,ptr->retcode);
     return(len);

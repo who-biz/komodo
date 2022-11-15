@@ -232,7 +232,7 @@ void chips_gameresp(CNode *pfrom,std::vector<uint8_t> response) // received a re
             CHIPS_gamedataresult.hex = (uint8_t*)malloc(response.size()-sizeof(int32_t)-1);
             LogPrintf(">>> (%s): prior to rwgamedata... calculated size = (%d)\n",__func__,size);
             CHIPS_rwgamedataresp(0,&response[1],&CHIPS_gamedataresult,size);
-            LogPrintf(">>> %s: got CHIPS gamedata response %u size.%d hexlength.%d retcode.%d\n",__func__,timestamp,(int32_t)response.size(),CHIPS_gamedataresult.hexlength,CHIPS_gamedataresult.retcode);
+            LogPrintf(">>> %s: got CHIPS gamedata response %u size.%d hexlength.%d retcode.%d nodetype.%u\n",__func__,timestamp,(int32_t)response.size(),CHIPS_gamedataresult.hexlength,CHIPS_gamedataresult.retcode,CHIPS_gamedataresult.nodetype);
         } else {
             LogPrintf(">>> %s unexpected response %02x size.%d at %u\n",__func__,response[0],(int32_t)response.size(),timestamp);
         }
@@ -608,13 +608,19 @@ UniValue CHIPS_gamedata_json(struct CHIPS_gamedataresp *ptr)
 {
     UniValue result(UniValue::VOBJ);
     result.push_back(Pair("result","success"));
-//    result.push_back(Pair("nodetype",nodetype));
 //    result.push_back(Pair("address",addr));
     std::vector<uint8_t> vHex;
     vHex.resize(ptr->hexlength);
     memcpy(&vHex[0],ptr->hex,ptr->hexlength);
     result.push_back(Pair("hex",HexStr(vHex.begin(),vHex.end())));
     result.push_back(Pair("hexlength",ptr->hexlength));
+    switch ( ptr->nodetype )
+    {
+        case 0: result.push_back(Pair("nodetype","player")); break;
+        case 1: result.push_back(Pair("nodetype","dealer")); break;
+        case 2: result.push_back(Pair("nodetype","cashier")); break;
+        default: result.push_back(Pair("nodetype","unknown")); break;
+    }
     result.push_back(Pair("retcode",(int64_t)ptr->retcode));
     switch ( ptr->retcode )
     {
@@ -1058,7 +1064,8 @@ UniValue CHIPS_sendgamedata(std::string const& addr, int32_t nodetype, char cons
     len += iguana_rwnum(1,&msg[len],sizeof(n),&n);
     //len += iguana_rwnum(1,&msg[len],n,data);
     memcpy(&msg[len],data,n), len += n;
-    LogPrintf(">>> (%s): n(%d) len(%d) hexdata(%s)\n",__func__,n,len,hexdata);
+    len += iguana_rwnum(1,&msg[len],sizeof(uint8_t),&nodetype);
+    LogPrintf(">>> (%s): n(%d) len(%d) hexdata(%s) nodetype(&d)\n",__func__,n,len,hexdata,nodetype);
     free(data);
 
     uint64_t serviceFlag = (1 << 31); // set high as default so no pnodes pass mask check
