@@ -1056,12 +1056,12 @@ UniValue sendgamedata(const UniValue& params, bool fHelp)
             "sendgamedata \"node\" nodetype \"hex\" \n"
             "\nAttempts to send game data to specified peer.\n"
             "\nArguments:\n"
-            "1. \"node\"      (string, required) The node (see getpeerinfo, getcashiers, or getdealers for nodes)\n"
+            "1. \"node\"      (string, required) Peer IP destination for data (see getpeerinfo, getcashiers, or getdealers for nodes)\n"
             "2. \"nodetype\"  (numeric, required) Describes the node type we are sending data to: '0' to player node, '1' to dealer node, '2' to cashier node.\n"
             "3. \"hex\"       (string, required) Hex-encoded data to be sent to specified node and nodetype\n"
             "\nExamples:\n"
-            + HelpExampleCli("sendgamedata", "\"192.168.0.6:8233\" 2 \"0a3d4c5d6e00\"")
-            + HelpExampleRpc("sendgamedata", "\"192.168.0.6:8233\", 2, \"0a3d4c5d6e00\"")
+            + HelpExampleCli("sendgamedata", "\"192.168.0.6\" 2 \"0a3d4c5d6e00\"")
+            + HelpExampleRpc("sendgamedata", "\"192.168.0.6\", 2, \"0a3d4c5d6e00\"")
         );
 
      //LogPrintf(">>> (%s): param1(%s), param2(%s), param3(%s)\n",__func__,params[0].get_str(),params[1].get_str(),params[2].get_str());
