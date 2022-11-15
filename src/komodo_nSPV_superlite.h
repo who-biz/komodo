@@ -609,7 +609,11 @@ UniValue CHIPS_gamedata_json(struct CHIPS_gamedataresp *ptr)
     result.push_back(Pair("result","success"));
 //    result.push_back(Pair("nodetype",nodetype));
 //    result.push_back(Pair("address",addr));
-    result.push_back(Pair("hex",ptr->hex));
+    std::vector<uint8_t> vHex;
+    vHex.resize(ptr->hexlength);
+    memcpy(&vHex[0],ptr->hex,ptr->hexlength);
+    result.push_back(Pair("hex",HexStr(vHex.begin(),vHex.end())));
+    result.push_back(Pair("hexlength",ptr->hexlength));
     result.push_back(Pair("retcode",(int64_t)ptr->retcode));
     switch ( ptr->retcode )
     {
