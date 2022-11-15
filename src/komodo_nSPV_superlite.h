@@ -221,6 +221,7 @@ void komodo_nSPVresp(CNode *pfrom,std::vector<uint8_t> response) // received a r
 
 void chips_gameresp(CNode *pfrom,std::vector<uint8_t> response) // received a response
 {
+    LogPrintf(">>> (%s): response.hex.(%s)\n",__func__,HexStr(response.begin(),response.end()));
     int32_t len; uint32_t timestamp = (uint32_t)time(NULL);
     if ( (len= response.size()) > 0 ) {
         if ( response[0] == CHIPS_GAMEDATARESP) {
@@ -231,7 +232,7 @@ void chips_gameresp(CNode *pfrom,std::vector<uint8_t> response) // received a re
             CHIPS_gamedataresult.hex = (uint8_t*)malloc(response.size()-sizeof(int32_t)-1);
             LogPrintf(">>> (%s): prior to rwgamedata... calculated size = (%d)\n",__func__,size);
             CHIPS_rwgamedataresp(0,&response[1],&CHIPS_gamedataresult,size);
-            LogPrintf(">>> %s: got CHIPS gamedata response %u size.%d retcode.%d\n",__func__,timestamp,(int32_t)response.size(),CHIPS_gamedataresult.retcode);
+            LogPrintf(">>> %s: got CHIPS gamedata response %u size.%d hexlength.%d retcode.%d\n",__func__,timestamp,(int32_t)response.size(),CHIPS_gamedataresult.hexlength,CHIPS_gamedataresult.retcode);
         } else {
             LogPrintf(">>> %s unexpected response %02x size.%d at %u\n",__func__,response[0],(int32_t)response.size(),timestamp);
         }
