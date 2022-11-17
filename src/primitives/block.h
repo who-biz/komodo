@@ -193,7 +193,7 @@ public:
                 sv.GetPBaaSHeader(pbh, descr.numPBaaSHeaders - 1);
             }
             sv.SetPBaaSHeader(pbh, idx);
-            
+
             descr.numPBaaSHeaders--;
             sv.SetDescriptor(descr);
         }
@@ -393,7 +393,7 @@ class CNetworkBlockHeader : public CBlockHeader
     void SetNull()
     {
         CBlockHeader::SetNull();
-        compatVec.clear();    
+        compatVec.clear();
     }
 };
 
@@ -565,7 +565,7 @@ public:
 
     CBlockHeaderProof(uint32_t nVersion=VERSION_INVALID) : version(nVersion) {}
     CBlockHeaderProof(const CBlockHeaderProof &obj) : version(obj.version), headerProof(obj.headerProof), mmrBridge(obj.mmrBridge), preHeader(obj.preHeader) {}
-    CBlockHeaderProof(const CMMRProof &powerNodeProof, const CBlockHeader &bh, uint32_t nVersion=VERSION_INVALID) : 
+    CBlockHeaderProof(const CMMRProof &powerNodeProof, const CBlockHeader &bh, uint32_t nVersion=VERSION_INVALID) :
         headerProof(powerNodeProof), mmrBridge(bh.MMRProofBridge()), preHeader(bh), version(nVersion) {}
 
     CBlockHeaderProof(const UniValue &uniObj)
@@ -681,6 +681,11 @@ public:
         retVal.pushKV("hex", HexBytes(&(thisVec[0]), thisVec.size()));
         return retVal;
     }
+
+    bool IsValid() const
+    {
+        return version >= VERSION_FIRST && version <= VERSION_LAST;
+    }
 };
 
 // class that enables efficient cross-chain proofs of a block
@@ -698,9 +703,9 @@ public:
     CBlockHeader blockHeader;                               // full block header
 
     CBlockHeaderAndProof(uint32_t nVersion=VERSION_INVALID) : version(nVersion) {}
-    CBlockHeaderAndProof(const CMMRProof &powerNodeProof, const CBlockHeader &bh, const CPBaaSPreHeader &bph, uint32_t nVersion=VERSION_INVALID) : 
+    CBlockHeaderAndProof(const CMMRProof &powerNodeProof, const CBlockHeader &bh, const CPBaaSPreHeader &bph, uint32_t nVersion=VERSION_INVALID) :
         headerProof(powerNodeProof), blockHeader(bh), version(nVersion) {}
-    
+
     CBlockHeaderAndProof(const UniValue &uniObj)
     {
         try
@@ -778,6 +783,14 @@ public:
         hash = headerProof.CheckProof(hash);
         return blockHeight == BlockNum() ? hash : uint256();
     }
+
+    // simple version check
+    bool IsValid() const
+    {
+        return version >= VERSION_FIRST &&
+               version <= VERSION_LAST &&
+               blockHeader.nVersion != 0;
+    }
 };
 
 // these are object types that can be stored and recognized in an opret array
@@ -790,7 +803,7 @@ enum CHAIN_OBJECT_TYPES
     CHAINOBJ_PROOF_ROOT = 4,        // merkle proof of preceding block or transaction
     CHAINOBJ_COMMITMENTDATA = 5,    // prior block commitments to ensure recognition of overlapping notarizations
     CHAINOBJ_RESERVETRANSFER = 6,   // serialized transaction, sometimes without an opret, which will be reconstructed
-    CHAINOBJ_COMPOSITEOBJECT = 7,   // can hold and index a variety and multiplicity of objects
+    CHAINOBJ_RESERVED = 7,          // unused and reserved
     CHAINOBJ_CROSSCHAINPROOF = 8,   // specific composite object, which is a single or multi-proof
     CHAINOBJ_NOTARYSIGNATURE = 9,   // notary signature
     CHAINOBJ_EVIDENCEDATA = 10      // flexible evidence data
@@ -867,7 +880,7 @@ public:
     uint256 commitmentTypes;                    // context dependent flags for commitments
 
     CHashCommitments(uint32_t nVersion=VERSION_INVALID) :  version(nVersion) {}
-    CHashCommitments(const std::vector<uint256> &priors, const uint256 &pastTypes, uint32_t nVersion=VERSION_INVALID) : 
+    CHashCommitments(const std::vector<uint256> &priors, const uint256 &pastTypes, uint32_t nVersion=VERSION_INVALID) :
         hashCommitments(priors), commitmentTypes(pastTypes), version(nVersion) {}
 
     CHashCommitments(const UniValue &uniObj)
@@ -906,6 +919,11 @@ public:
         std::vector<unsigned char> thisVec = ::AsVector(*this);
         retVal.pushKV("hex", HexBytes(&(thisVec[0]), thisVec.size()));
         return retVal;
+    }
+
+    bool IsValid() const
+    {
+        return version >= VERSION_FIRST && version <= VERSION_LAST;
     }
 };
 
@@ -973,13 +991,13 @@ public:
     std::map<CIdentityID, CIdentitySignature> signatures; // one or more notary signatures with same statements combined
 
     CNotarySignature(uint8_t nVersion=VERSION_CURRENT) : version(nVersion) {}
-    CNotarySignature(const uint160 &sysID, 
+    CNotarySignature(const uint160 &sysID,
                      const CUTXORef &finalRef,
                      bool Confirmed=true,
                      const std::map<CIdentityID, CIdentitySignature> &Signatures=std::map<CIdentityID, CIdentitySignature>(),
-                     uint8_t Version=VERSION_CURRENT) : 
+                     uint8_t Version=VERSION_CURRENT) :
                         version(Version),
-                        systemID(sysID), 
+                        systemID(sysID),
                         output(finalRef),
                         confirmed(Confirmed),
                         signatures(Signatures)
@@ -1079,8 +1097,8 @@ public:
         return signatureKey;
     }
 
-    CIdentitySignature::ESignatureVerification SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EProofProtocol hashType);
-    CIdentitySignature::ESignatureVerification SignRejected(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EProofProtocol hashType);
+    CIdentitySignature::ESignatureVerification SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType);
+    CIdentitySignature::ESignatureVerification SignRejected(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType);
 
     bool IsConfirmed() const
     {
@@ -1101,10 +1119,10 @@ public:
 
     bool IsValid() const
     {
-        return version >= VERSION_FIRST && 
-               version <= VERSION_LAST && 
-               !systemID.IsNull() && 
-               output.IsValid() && 
+        return version >= VERSION_FIRST &&
+               version <= VERSION_LAST &&
+               !systemID.IsNull() &&
+               output.IsValid() &&
                signatures.size();
     }
 };
@@ -1151,14 +1169,13 @@ public:
         uint160 vdxfd;                      // vdxfDescriptor is only for non-multipart types
     };
 
-public:
     std::vector<unsigned char> dataVec;     // actual data or reference, depending on type
 
     CEvidenceData(uint32_t EvidenceType=TYPE_DATA, uint32_t nVersion=VERSION_CURRENT) : type(EvidenceType), version(nVersion) {}
 
     CEvidenceData(const std::vector<unsigned char> &DataVec, uint32_t IndexNum, int64_t TotalLength, int64_t Start,
                   uint32_t EvidenceType=TYPE_DATA, uint32_t nVersion=VERSION_CURRENT) :
-        type(EvidenceType), 
+        type(EvidenceType),
         version(nVersion),
         dataVec(DataVec)
     {
@@ -1169,7 +1186,7 @@ public:
     }
 
     CEvidenceData(uint160 vdxfKey, uint32_t EvidenceType=TYPE_DATA, uint32_t nVersion=VERSION_CURRENT) :
-        type(EvidenceType), 
+        type(EvidenceType),
         version(nVersion)
     {
         if (type != TYPE_MULTIPART_DATA)
@@ -1220,7 +1237,7 @@ public:
         }
     }
 
-    // takes two  
+    // takes two
     const CEvidenceData &mergeData(const CEvidenceData &mergeWith);
 
     // used to span multiple outputs if a cross-chain proof becomes too big for just one
@@ -1239,7 +1256,7 @@ public:
     bool IsValid() const
     {
         // TODO: HARDENING - put in some reasonable range checks due to union
-        return version >= VERSION_FIRST && 
+        return version >= VERSION_FIRST &&
                version <= VERSION_LAST;
     }
 };
@@ -1409,19 +1426,6 @@ public:
                             break;
                         }
 
-                        case CHAINOBJ_COMPOSITEOBJECT:
-                        {
-                            CCrossChainProof obj;
-                            READWRITE(obj);
-                            pCrossChainProof = new CChainObject<CCrossChainProof>();
-                            if (pCrossChainProof)
-                            {
-                                pCrossChainProof->objectType = CHAINOBJ_COMPOSITEOBJECT;
-                                pCrossChainProof->object = obj;
-                            }
-                            break;
-                        }
-
                         case CHAINOBJ_NOTARYSIGNATURE:
                         {
                             CNotarySignature obj;
@@ -1483,6 +1487,64 @@ public:
 
     bool IsValid() const
     {
+        union {
+            CChainObject<CBlockHeaderAndProof> *pNewHeader;
+            CChainObject<CPartialTransactionProof> *pNewTx;
+            CChainObject<CProofRoot> *pNewProof;
+            CChainObject<CBlockHeaderProof> *pNewHeaderRef;
+            CChainObject<CHashCommitments> *pPriors;
+            CChainObject<CReserveTransfer> *pExport;
+            CChainObject<CCrossChainProof> *pCrossChainProof;
+            CChainObject<CNotarySignature> *pNotarySignature;
+            CChainObject<CEvidenceData> *pBytes;
+            CBaseChainObject *pobj;
+        };
+
+        for (int i = 0; i < chainObjects.size(); i++)
+        {
+            pobj = chainObjects[i];
+            switch(pobj->objectType)
+            {
+                case CHAINOBJ_HEADER:
+                    if (!pNewHeader->object.IsValid()) return false;
+                    break;
+
+                case CHAINOBJ_TRANSACTION_PROOF:
+                    if (!pNewTx->object.IsValid()) return false;
+                    break;
+
+                case CHAINOBJ_HEADER_REF:
+                    if (!pNewHeaderRef->object.IsValid()) return false;
+                    break;
+
+                case CHAINOBJ_COMMITMENTDATA:
+                    if (!pPriors->object.IsValid()) return false;
+                    break;
+
+                case CHAINOBJ_PROOF_ROOT:
+                    if (!pNewProof->object.IsValid()) return false;
+                    break;
+
+                case CHAINOBJ_RESERVETRANSFER:
+                    if (!pExport->object.IsValid()) return false;
+                    break;
+
+                case CHAINOBJ_CROSSCHAINPROOF:
+                    if (!pCrossChainProof->object.IsValid()) return false;
+                    break;
+
+                case CHAINOBJ_NOTARYSIGNATURE:
+                    if (!pNotarySignature->object.IsValid()) return false;
+                    break;
+
+                case CHAINOBJ_EVIDENCEDATA:
+                    if (!pBytes->object.IsValid()) return false;
+                    break;
+
+                default:
+                    return false;
+            }
+        }
         return (version >= VERSION_FIRST || version <= VERSION_LAST);
     }
 
@@ -1663,7 +1725,6 @@ public:
                 break;
             }
 
-            case CHAINOBJ_COMPOSITEOBJECT:
             case CHAINOBJ_CROSSCHAINPROOF:
             {
                 *this << ((CChainObject<CCrossChainProof> *)baseObj)->object;
@@ -1803,28 +1864,6 @@ public:
     UniValue ToUniValue() const;
 };
 
-// this must remain cast/data compatible with CCompositeChainObject
-class CCompositeChainObject : public CCrossChainProof
-{
-public:
-    CCompositeChainObject() : CCrossChainProof() {}
-    CCompositeChainObject(const std::vector<CBaseChainObject *> &proofs, int Version=VERSION_CURRENT) : 
-        CCrossChainProof(proofs, Version) { }
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(*(CCrossChainProof *)this);
-    }
-
-    const CCompositeChainObject &operator<<(const CCompositeChainObject &compositeChainObject)
-    {
-        chainObjects.push_back(static_cast<CBaseChainObject *>(new CChainObject<CCompositeChainObject>(CHAINOBJ_COMPOSITEOBJECT, compositeChainObject)));
-        return *this;
-    }
-};
-
 // returns a pointer to a base chain object, which can be cast to the
 // object type indicated in its objType member
 uint256 GetChainObjectHash(const CBaseChainObject &bo);
@@ -1853,7 +1892,7 @@ CBaseChainObject *RehydrateChainObject(OStream &s)
         CChainObject<CHashCommitments> *pPriors;
         CChainObject<CReserveTransfer> *pExport;
         CChainObject<CCrossChainProof> *pCrossChainProof;
-        CChainObject<CCompositeChainObject> *pCompositeChainObject;
+        CChainObject<CNotarySignature> *pNotarySig;
         CChainObject<CEvidenceData> *pBytes;
         CBaseChainObject *retPtr;
     };
@@ -1910,6 +1949,7 @@ CBaseChainObject *RehydrateChainObject(OStream &s)
                 pExport->objectType = objType;
             }
             break;
+
         case CHAINOBJ_CROSSCHAINPROOF:
             pCrossChainProof = new CChainObject<CCrossChainProof>();
             if (pCrossChainProof)
@@ -1918,15 +1958,7 @@ CBaseChainObject *RehydrateChainObject(OStream &s)
                 pCrossChainProof->objectType = objType;
             }
             break;
-        // TODO: HARDENING - consider removing composite chain object completely
-        case CHAINOBJ_COMPOSITEOBJECT:
-            pCompositeChainObject = new CChainObject<CCompositeChainObject>();
-            if (pCompositeChainObject)
-            {
-                s >> pCompositeChainObject->object;
-                pCompositeChainObject->objectType = objType;
-            }
-            break;
+
         case CHAINOBJ_EVIDENCEDATA:
         {
             pBytes = new CChainObject<CEvidenceData>();
@@ -1934,6 +1966,17 @@ CBaseChainObject *RehydrateChainObject(OStream &s)
             {
                 s >> pBytes->object;
                 pBytes->objectType = objType;
+            }
+            break;
+        }
+
+        case CHAINOBJ_NOTARYSIGNATURE:
+        {
+            pNotarySig = new CChainObject<CNotarySignature>();
+            if (pNotarySig)
+            {
+                s >> pNotarySig->object;
+                pNotarySig->objectType = objType;
             }
             break;
         }
@@ -1983,7 +2026,6 @@ bool DehydrateChainObject(OStream &s, const CBaseChainObject *pobj)
             s << *(CChainObject<CHashCommitments> *)pobj;
             return true;
         }
-
         case CHAINOBJ_RESERVETRANSFER:
         {
             s << *(CChainObject<CReserveTransfer> *)pobj;
@@ -1992,11 +2034,6 @@ bool DehydrateChainObject(OStream &s, const CBaseChainObject *pobj)
         case CHAINOBJ_CROSSCHAINPROOF:
         {
             s << *(CChainObject<CCrossChainProof> *)pobj;
-            return true;
-        }
-        case CHAINOBJ_COMPOSITEOBJECT:
-        {
-            s << *(CChainObject<CCompositeChainObject> *)pobj;
             return true;
         }
         case CHAINOBJ_NOTARYSIGNATURE:
@@ -2020,7 +2057,9 @@ int8_t ObjTypeCode(const CReserveTransfer &obj);
 
 int8_t ObjTypeCode(const CCrossChainProof &obj);
 
-int8_t ObjTypeCode(const CCompositeChainObject &obj);
+int8_t ObjTypeCode(const CNotarySignature &obj);
+
+int8_t ObjTypeCode(const CEvidenceData &obj);
 
 // this adds an opret to a mutable transaction that provides the necessary evidence of a signed, cheating stake transaction
 CScript StoreOpRetArray(const std::vector<CBaseChainObject *> &objPtrs);
@@ -2030,7 +2069,7 @@ void DeleteOpRetObjects(std::vector<CBaseChainObject *> &ora);
 std::vector<CBaseChainObject *> RetrieveOpRetArray(const CScript &opRetScript);
 
 // this is a spend that only exists to provide a signature and be indexed as having done
-// so. It is a form of vote, expressed by signing a specific output script, this is used 
+// so. It is a form of vote, expressed by signing a specific output script, this is used
 // for finalizing notarizations and can be used for other types of votes where signatures
 // are required.
 //
@@ -2080,15 +2119,15 @@ public:
     CCrossChainProof evidence;              // evidence in the form of signatures, cross chain proofs of transactions, block hashes, and power
 
     CNotaryEvidence(uint8_t EvidenceType=TYPE_NOTARY_EVIDENCE, uint8_t nVersion=VERSION_CURRENT, uint8_t State=STATE_CONFIRMED) : version(nVersion), type(EvidenceType), state(State) {}
-    CNotaryEvidence(const uint160 &sysID, 
+    CNotaryEvidence(const uint160 &sysID,
                     const CUTXORef &finalRef,
                     uint8_t State=STATE_CONFIRMED,
-                    const CCrossChainProof &Evidence=CCrossChainProof(), 
+                    const CCrossChainProof &Evidence=CCrossChainProof(),
                     uint8_t Type=TYPE_NOTARY_EVIDENCE,
-                    uint8_t Version=VERSION_CURRENT) : 
+                    uint8_t Version=VERSION_CURRENT) :
                     version(Version),
                     type(Type),
-                    systemID(sysID), 
+                    systemID(sysID),
                     output(finalRef),
                     state(State),
                     evidence(Evidence)
@@ -2248,8 +2287,8 @@ public:
         return signatureKey;
     }
 
-    CIdentitySignature::ESignatureVerification SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EProofProtocol hashType);
-    CIdentitySignature::ESignatureVerification SignRejected(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EProofProtocol hashType);
+    CIdentitySignature::ESignatureVerification SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType);
+    CIdentitySignature::ESignatureVerification SignRejected(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType);
 
     bool IsMultipartProof() const
     {
@@ -2282,10 +2321,10 @@ public:
 
     bool IsValid() const
     {
-        return version >= VERSION_FIRST && 
-               version <= VERSION_LAST && 
-               !systemID.IsNull() && 
-               output.IsValid() && 
+        return version >= VERSION_FIRST &&
+               version <= VERSION_LAST &&
+               !systemID.IsNull() &&
+               output.IsValid() &&
                !evidence.Empty();
     }
 };

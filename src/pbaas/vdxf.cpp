@@ -1,19 +1,17 @@
 /********************************************************************
  * (C) 2020 Michael Toutonghi
- * 
+ *
  * Distributed under the MIT software license, see the accompanying
  * file COPYING or http://www.opensource.org/licenses/mit-license.php.
- * 
+ *
  * Support for the Verus Data Exchange Format (VDXF)
- * 
+ *
  */
 
 #include "vdxf.h"
 #include "crosschainrpc.h"
 
 std::string CVDXF::DATA_KEY_SEPARATOR = "::";
-
-// TODO: HARDENING - ensure discussion on question of data limits
 
 uint160 CVDXF::STRUCTURED_DATA_KEY = CVDXF_StructuredData::StructuredDataKey();
 uint160 CVDXF::ZMEMO_MESSAGE_KEY = CVDXF_Data::ZMemoMessageKey();
@@ -87,7 +85,7 @@ std::vector<std::string> CVDXF::ParseSubNames(const std::string &Name, std::stri
     {
         ChainOut = retNames[1];
         explicitChain = true;
-    }    
+    }
 
     nameCopy = retNames[0];
     boost::split(retNames, nameCopy, boost::is_any_of("."));
@@ -110,7 +108,7 @@ std::vector<std::string> CVDXF::ParseSubNames(const std::string &Name, std::stri
             std::vector<std::string> chainOutNames;
             boost::split(chainOutNames, ChainOut, boost::is_any_of("."));
             std::string lastChainOut = boost::to_lower_copy(chainOutNames.back());
-            
+
             if (lastChainOut != "" && lastChainOut != verusChainName)
             {
                 chainOutNames.push_back(verusChainName);
@@ -272,7 +270,7 @@ uint160 CVDXF::GetDataKey(const std::string &keyName, uint160 &nameSpaceID)
     return GetID(keyCopy, parent);
 }
 
-bool uni_get_bool(UniValue uv, bool def)
+bool uni_get_bool(const UniValue &uv, bool def)
 {
     try
     {
@@ -305,7 +303,7 @@ bool uni_get_bool(UniValue uv, bool def)
     }
 }
 
-int32_t uni_get_int(UniValue uv, int32_t def)
+int32_t uni_get_int(const UniValue &uv, int32_t def)
 {
     try
     {
@@ -321,7 +319,7 @@ int32_t uni_get_int(UniValue uv, int32_t def)
     }
 }
 
-int64_t uni_get_int64(UniValue uv, int64_t def)
+int64_t uni_get_int64(const UniValue &uv, int64_t def)
 {
     try
     {
@@ -337,7 +335,7 @@ int64_t uni_get_int64(UniValue uv, int64_t def)
     }
 }
 
-std::string uni_get_str(UniValue uv, std::string def)
+std::string uni_get_str(const UniValue &uv, std::string def)
 {
     try
     {
@@ -349,7 +347,7 @@ std::string uni_get_str(UniValue uv, std::string def)
     }
 }
 
-std::vector<UniValue> uni_getValues(UniValue uv, std::vector<UniValue> def)
+std::vector<UniValue> uni_getValues(const UniValue &uv, std::vector<UniValue> def)
 {
     try
     {

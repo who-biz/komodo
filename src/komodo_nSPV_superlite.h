@@ -132,7 +132,7 @@ struct NSPV_ntzsproofresp *NSPV_ntzsproof_add(struct NSPV_ntzsproofresp *ptr)
 
 // komodo_nSPVresp is called from async message processing
 
-int64_t nBlockTime = GetArg("-blocktime",DEFAULT_BLOCKTIME_TARGET);
+int64_t nBlockTime = GetArg("-blocktime",CCurrencyDefinition::DEFAULT_BLOCKTIME_TARGET);
 
 void komodo_nSPVresp(CNode *pfrom,std::vector<uint8_t> response) // received a response
 {

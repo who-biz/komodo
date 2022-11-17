@@ -1,14 +1,14 @@
 /********************************************************************
  * (C) 2019 Michael Toutonghi
- * 
+ *
  * Distributed under the MIT software license, see the accompanying
  * file COPYING or http://www.opensource.org/licenses/mit-license.php.
- * 
+ *
  * This provides support for PBaaS initialization, notarization, and cross-chain token
  * transactions and enabling liquid or non-liquid tokens across the
  * Verus ecosystem.
- * 
- * 
+ *
+ *
  */
 
 #ifndef PBAAS_H
@@ -56,7 +56,7 @@ public:
 
     CPoSSelector(uint32_t bits, uint32_t TargetSpacing)
     {
-        nBits = bits; 
+        nBits = bits;
         nTargetSpacing = TargetSpacing;
     }
 
@@ -220,13 +220,12 @@ public:
     enum {
         VERSION_INVALID = 0,
         VERSION_FIRST = 1,
-        VERSION_LAST = 1,
-        VERSION_CURRENT = 1,
+        VERSION_PBAAS = 1,
+        VERSION_PBAAS2 = 2,
+        VERSION_LAST = 2,
+        VERSION_CURRENT = 2,
         FINAL_CONFIRMATIONS = 9,
         DEFAULT_NOTARIZATION_FEE = 10000,               // price of a notarization fee in native or launch system currency
-        BLOCK_NOTARIZATION_MODULO = 10,                 // incentive to earn one valid notarization during this many blocks
-        MIN_BLOCKS_BEFORE_NOTARY_FINALIZED = 15,        // 15 blocks must go by before notary signatures or confirming evidence can be provided
-        MAX_NOTARIZATION_CONVERSION_PRICING_INTERVAL = 100,  // there must be a notarization with conversion at least 100 blocks before reserve transfer
         MAX_NODES = 2,                                  // only provide 2 nodes per notarization
         MIN_NOTARIZATION_OUTPUT = 0,                    // minimum amount for notarization output
     };
@@ -277,7 +276,7 @@ public:
                        const CTransferDestination &Proposer=CTransferDestination(),
                        const std::map<uint160, CProofRoot> &ProofRoots=std::map<uint160, CProofRoot>(),
                        uint32_t version=VERSION_CURRENT,
-                       uint32_t Flags=FLAGS_NONE) : 
+                       uint32_t Flags=FLAGS_NONE) :
                        nVersion(version),
                        flags(Flags),
                        proposer(Proposer),
@@ -317,41 +316,79 @@ public:
         READWRITE(hashPrevCrossNotarization);
         READWRITE(prevHeight);
 
-        std::vector<std::pair<uint160, CCoinbaseCurrencyState>> vecCurrencyStates;
-        if (ser_action.ForRead())
+        if (nVersion == VERSION_PBAAS2)
         {
-            READWRITE(vecCurrencyStates);
-            for (auto &oneState : vecCurrencyStates)
+            std::vector<CCoinbaseCurrencyState> vecCurrencyStates;
+            if (ser_action.ForRead())
             {
-                currencyStates.insert(oneState);
+                READWRITE(vecCurrencyStates);
+                for (auto &oneState : vecCurrencyStates)
+                {
+                    currencyStates.insert(std::make_pair(oneState.GetID(), oneState));
+                }
+            }
+            else
+            {
+                for (auto &oneState : currencyStates)
+                {
+                    vecCurrencyStates.push_back(oneState.second);
+                }
+                READWRITE(vecCurrencyStates);
+            }
+            std::vector<CProofRoot> vecProofRoots;
+            if (ser_action.ForRead())
+            {
+                READWRITE(vecProofRoots);
+                for (auto &oneRoot : vecProofRoots)
+                {
+                    proofRoots.insert(std::make_pair(oneRoot.systemID, oneRoot));
+                }
+            }
+            else
+            {
+                for (auto &oneRoot : proofRoots)
+                {
+                    vecProofRoots.push_back(oneRoot.second);
+                }
+                READWRITE(vecProofRoots);
             }
         }
         else
         {
-            for (auto &oneState : currencyStates)
+            std::vector<std::pair<uint160, CCoinbaseCurrencyState>> vecCurrencyStates;
+            if (ser_action.ForRead())
             {
-                vecCurrencyStates.push_back(oneState);
+                READWRITE(vecCurrencyStates);
+                for (auto &oneState : vecCurrencyStates)
+                {
+                    currencyStates.insert(oneState);
+                }
             }
-            READWRITE(vecCurrencyStates);
-        }
-
-        std::vector<std::pair<uint160, CProofRoot>> vecProofRoots;
-
-        if (ser_action.ForRead())
-        {
-            READWRITE(vecProofRoots);
-            for (auto &oneRoot : vecProofRoots)
+            else
             {
-                proofRoots.insert(oneRoot);
+                for (auto &oneState : currencyStates)
+                {
+                    vecCurrencyStates.push_back(oneState);
+                }
+                READWRITE(vecCurrencyStates);
             }
-        }
-        else
-        {
-            for (auto &oneRoot : proofRoots)
+            std::vector<std::pair<uint160, CProofRoot>> vecProofRoots;
+            if (ser_action.ForRead())
             {
-                vecProofRoots.push_back(oneRoot);
+                READWRITE(vecProofRoots);
+                for (auto &oneRoot : vecProofRoots)
+                {
+                    proofRoots.insert(oneRoot);
+                }
             }
-            READWRITE(vecProofRoots);
+            else
+            {
+                for (auto &oneRoot : proofRoots)
+                {
+                    vecProofRoots.push_back(oneRoot);
+                }
+                READWRITE(vecProofRoots);
+            }
         }
 
         READWRITE(nodes);
@@ -476,22 +513,22 @@ public:
     }
 
     // if false, *this is unmodifed, otherwise, it is set to the last valid notarization in the requested range
-    bool GetLastNotarization(const uint160 &currencyID, 
-                             int32_t startHeight=0, 
-                             int32_t endHeight=0, 
+    bool GetLastNotarization(const uint160 &currencyID,
+                             int32_t startHeight=0,
+                             int32_t endHeight=0,
                              uint256 *txIDOut=nullptr,
                              CTransaction *txOut=nullptr);
 
     // if false, no matching, unspent notarization found
-    bool GetLastUnspentNotarization(const uint160 &currencyID, 
+    bool GetLastUnspentNotarization(const uint160 &currencyID,
                                     uint256 &txIDOut,
                                     int32_t &txOutNum,
                                     CTransaction *txOut=nullptr);
 
-    bool NextNotarizationInfo(const CCurrencyDefinition &sourceSystem, 
-                              const CCurrencyDefinition &destCurrency, 
-                              uint32_t lastExportHeight, 
-                              uint32_t notaHeight, 
+    bool NextNotarizationInfo(const CCurrencyDefinition &sourceSystem,
+                              const CCurrencyDefinition &destCurrency,
+                              uint32_t lastExportHeight,
+                              uint32_t notaHeight,
                               std::vector<CReserveTransfer> &exportTransfers,
                               uint256 &transferHash,
                               CPBaaSNotarization &newNotarization,
@@ -527,14 +564,6 @@ public:
                                              std::vector<TransactionBuilder> &txBuilders,
                                              uint32_t nHeight,
                                              bool &finalized);
-
-    bool IsNotarizationConfirmed(const CPBaaSNotarization &notarization,
-                                 const CNotaryEvidence &notaryEvidence,
-                                 CValidationState &state) const;
-
-    bool IsNotarizationRejected(const CPBaaSNotarization &notarization,
-                                const CNotaryEvidence &notaryEvidence,
-                                CValidationState &state) const;
 
     static std::vector<uint256> SubmitFinalizedNotarizations(const CRPCChainData &externalSystem,
                                                              CValidationState &state);
@@ -734,8 +763,8 @@ public:
 
     CNotarySystemInfo(uint32_t NotarySystemType=TYPE_PBAAS, uint32_t NotaryVersion=VERSION_INVALID) : notarySystemVersion(NotaryVersion), notarySystemType(NotarySystemType), height(0) {}
 
-    CNotarySystemInfo(uint32_t Height, 
-                      const CRPCChainData &NotaryChain, 
+    CNotarySystemInfo(uint32_t Height,
+                      const CRPCChainData &NotaryChain,
                       const CPBaaSNotarization &lastNotarization,
                       uint32_t NotarySystemType=TYPE_PBAAS,
                       uint32_t notaryVersion=VERSION_CURRENT) :
@@ -821,23 +850,25 @@ public:
     void AggregateChainTransfers(const CTransferDestination &feeRecipient, uint32_t nHeight);
     CCurrencyDefinition GetCachedCurrency(const uint160 &currencyID);
     std::string GetFriendlyCurrencyName(const uint160 &currencyID);
+    std::string GetFriendlyIdentityName(const CIdentity &identity);
+    std::string GetFriendlyIdentityName(const std::string &name, const uint160 &parentCurrencyID);
     CCurrencyDefinition UpdateCachedCurrency(const CCurrencyDefinition &currentCurrency, uint32_t height);
 
-    bool GetLastImport(const uint160 &currencyID, 
-                       CTransaction &lastImport, 
+    bool GetLastImport(const uint160 &currencyID,
+                       CTransaction &lastImport,
                        int32_t &outputNum);
 
-    bool GetLastSourceImport(const uint160 &currencyID, 
-                             CTransaction &lastImport, 
+    bool GetLastSourceImport(const uint160 &currencyID,
+                             CTransaction &lastImport,
                              int32_t &outputNum);
 
     bool GetUnspentSystemExports(const CCoinsViewCache &view,
-                                 const uint160 systemID, 
-                                 std::vector<pair<int, CInputDescriptor>> &exportOutputs);
+                                 const uint160 systemID,
+                                 std::vector<std::pair<int, CInputDescriptor>> &exportOutputs);
 
     bool GetUnspentCurrencyExports(const CCoinsViewCache &view,
-                                   const uint160 currencyID, 
-                                   std::vector<pair<int, CInputDescriptor>> &exportOutputs);
+                                   const uint160 currencyID,
+                                   std::vector<std::pair<int, CInputDescriptor>> &exportOutputs);
 
     // get the exports to a specific system on this chain from a specific height up to a specific height
     bool GetSystemExports(const uint160 &systemID,                                 // transactions exported to system
@@ -845,7 +876,7 @@ public:
                           uint32_t fromHeight,
                           uint32_t toHeight,
                           bool withProofs=false);
-    
+
     // gets both the launch notarization and its partial transaction proof if launching to a new system
     bool GetLaunchNotarization(const CCurrencyDefinition &curDef,
                                std::pair<CInputDescriptor, CPartialTransactionProof> &notarizationTx,
@@ -882,6 +913,7 @@ public:
                          std::vector<std::pair<std::pair<CInputDescriptor,CPartialTransactionProof>,std::vector<CReserveTransfer>>> &exports);
 
     static bool GetReserveDeposits(const uint160 &currencyID, const CCoinsViewCache &view, std::vector<CInputDescriptor> &reserveDeposits);
+    static bool GetUnspentByIndex(const uint160 &indexID, std::vector<CInputDescriptor> &unspentOutptus);
 
     static bool IsValidCurrencyDefinitionImport(const CCurrencyDefinition &sourceSystemDef,
                                                 const CCurrencyDefinition &destSystemDef,
@@ -919,8 +951,7 @@ public:
                           const CUTXORef &lastNotarizationUTXO,
                           CPBaaSNotarization &newNotarization,
                           int &newNotarizationOutNum,
-                          bool onlyIfRequired=true,
-                          const ChainTransferData *addInputTx=nullptr);
+                          bool onlyIfRequired=true);
 
     // create a set of imports on the current chain for a set of exports
     bool CreateLatestImports(const CCurrencyDefinition &sourceSystemDef,                            // transactions imported from system
@@ -977,11 +1008,19 @@ public:
                                                    const CCoinbaseCurrencyState &currencyState,
                                                    int32_t fromHeight,
                                                    int32_t height,
-                                                   int32_t curDefHeight);
+                                                   int32_t curDefHeight,
+                                                   const std::vector<CReserveTransfer> &extraConversions=std::vector<CReserveTransfer>());
 
-    CCoinbaseCurrencyState GetCurrencyState(int32_t height);                                // gets this chain's native currency state by block height
-    CCoinbaseCurrencyState GetCurrencyState(CCurrencyDefinition &curDef, int32_t height, int32_t curDefHeight=0); // gets currency state
-    CCoinbaseCurrencyState GetCurrencyState(const uint160 &currencyID, int32_t height);     // gets currency state
+    CCoinbaseCurrencyState AddPendingConversions(CCurrencyDefinition &curDef,
+                                                 const CPBaaSNotarization &currencyState,
+                                                 int32_t fromHeight,
+                                                 int32_t height,
+                                                 int32_t curDefHeight,
+                                                 const std::vector<CReserveTransfer> &extraConversions=std::vector<CReserveTransfer>());
+
+    CCoinbaseCurrencyState GetCurrencyState(int32_t height, bool loadPendingTransfers=true);     // gets this chain's native currency state by block height
+    CCoinbaseCurrencyState GetCurrencyState(CCurrencyDefinition &curDef, int32_t height, int32_t curDefHeight=0, bool loadPendingTransfers=true); // gets currency state
+    CCoinbaseCurrencyState GetCurrencyState(const uint160 &currencyID, int32_t height, bool loadPendingTransfers=true); // gets currency state
 
     CCurrencyDefinition GetDestinationCurrency(const CReserveTransfer &rt) const;
 
@@ -1002,8 +1041,8 @@ public:
         return ret;
     }
 
-    bool GetNotaryCurrencies(const CRPCChainData notaryChain, 
-                             const std::set<uint160> &currencyIDs, 
+    bool GetNotaryCurrencies(const CRPCChainData notaryChain,
+                             const std::set<uint160> &currencyIDs,
                              std::map<uint160, std::pair<CCurrencyDefinition,CPBaaSNotarization>> &currencyDefs);
     bool GetNotaryIDs(const CRPCChainData notaryChain, const std::set<uint160> &idIDs, std::map<uint160,CIdentity> &identities);
 };
