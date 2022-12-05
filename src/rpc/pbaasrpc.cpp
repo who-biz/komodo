@@ -8248,7 +8248,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
         const std::string& strData = params[5].getValStr();
         if (!strData.empty()) {
             std::vector<unsigned char> data = ParseHexV(strData, "Data");
-            tOutputs.push_back(SendManyRecipient("",0,"",(CScript() << OP_RETURN << data)));
+            tb.AddOpRet(CScript() << OP_RETURN << data);
         }
     }
 
