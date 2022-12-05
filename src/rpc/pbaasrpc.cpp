@@ -6875,7 +6875,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
         }
     }
 
-
     bool returnTx = params.size() > 4 ? uni_get_bool(params[4]) : false;
 
     const UniValue &uniOutputs = params[1];
@@ -8247,11 +8246,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
     if (params.size() > 5) {
         const std::string& strData = params[5].getValStr();
-        if (strData.empty()) {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot specify empty data!");
-        } else {
+        if (!strData.empty()) {
             std::vector<unsigned char> data = ParseHexV(strData, "Data");
-            //CTxOut out(0, CScript() << OP_RETURN << data);
             tOutputs.push_back(SendManyRecipient("",0,"",(CScript() << OP_RETURN << data)));
         }
     }
