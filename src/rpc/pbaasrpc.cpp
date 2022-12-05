@@ -6761,10 +6761,10 @@ bool IsValidExportCurrency(const CCurrencyDefinition &systemDest, const uint160 
 
 UniValue sendcurrency(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() < 2 || params.size() > 5)
+    if (fHelp || params.size() < 2 || params.size() > 6)
     {
         throw runtime_error(
-            "sendcurrency \"fromaddress\" '[{\"address\":... ,\"amount\":...},...]' (minconfs) (feeamount) (returntxtemplate)\n"
+            "sendcurrency \"fromaddress\" '[{\"address\":... ,\"amount\":...},...]' (minconfs) (feeamount) (returntxtemplate) (\"data\")\n"
             "\nThis sends one or many Verus outputs to one or many addresses on the same or another chain.\n"
             "Funds are sourced automatically from the current wallet, which must be present, as in sendtoaddress.\n"
             "If \"fromaddress\" is specified, all funds will be taken from that address, otherwise funds may come\n"
@@ -6791,6 +6791,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             "    }, ... ]\n"
             "3. \"minconf\"                 (numeric, optional, default=1) only use funds confirmed at least this many times.\n"
             "4. \"feeamount\"               (number, optional) specific fee amount requested instead of default miner's fee\n"
+            "5. \"returntxtemplate\"        (bool, optional) Toggle to return tx template in response\n"
+            "6. \"data\"                    (string, optional) arbitrary hex-encoded data to embed into OP_RETURN script\n"
 
             "\nResult:\n"
             "   \"operation-id\" : \"opid\" (string) The operation id, not public info, if (returntxtemplate) is false\n"
@@ -6872,6 +6874,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send currency from a locked identity");
         }
     }
+
 
     bool returnTx = params.size() > 4 ? uni_get_bool(params[4]) : false;
 
@@ -8241,6 +8244,18 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     }
 
     CMutableTransaction contextualTx = CreateNewContextualCMutableTransaction(Params().GetConsensus(), height + 1);
+
+    if (params.size() > 5) {
+        const std::string& strData = params[5].getValStr();
+        if (strData.empty()) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot specify empty data!");
+        } else {
+            std::vector<unsigned char> data = ParseHexV(strData, "Data");
+            //CTxOut out(0, CScript() << OP_RETURN << data);
+            tOutputs.push_back(SendManyRecipient("",0,"",(CScript() << OP_RETURN << data)));
+        }
+    }
+
     std::shared_ptr<AsyncRPCQueue> q = getAsyncRPCQueue();
     std::shared_ptr<AsyncRPCOperation> operation(new AsyncRPCOperation_sendmany(tb,
                                                                                 contextualTx,
