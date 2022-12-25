@@ -4369,7 +4369,7 @@ bool CConnectedChains::GetReserveDeposits(const uint160 &currencyID, const CCoin
     return true;
 }
 
-bool CConnectedChains::GetUnspentByIndex(const uint160 &indexID, std::vector<CInputDescriptor> &unspentOutptus)
+bool CConnectedChains::GetUnspentByIndex(const uint160 &indexID, std::vector<std::pair<CInputDescriptor, uint32_t>> &unspentOutptus)
 {
     std::vector<CAddressUnspentDbEntry> confirmedUTXOs;
     std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> unconfirmedUTXOs;
@@ -4388,8 +4388,9 @@ bool CConnectedChains::GetUnspentByIndex(const uint160 &indexID, std::vector<CIn
         if (!mempool.mapNextTx.count(COutPoint(oneConfirmed.first.txhash, oneConfirmed.first.index)) &&
             oneConfirmed.second.script.IsPayToCryptoCondition(p) && p.IsValid())
         {
-            unspentOutptus.push_back(CInputDescriptor(oneConfirmed.second.script, oneConfirmed.second.satoshis,
-                                                        CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index)));
+            unspentOutptus.push_back(std::make_pair(CInputDescriptor(oneConfirmed.second.script, oneConfirmed.second.satoshis,
+                                                        CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index)),
+                                                    (uint32_t)oneConfirmed.second.blockHeight));
         }
     }
 
@@ -4398,8 +4399,9 @@ bool CConnectedChains::GetUnspentByIndex(const uint160 &indexID, std::vector<CIn
     for (auto &oneUnconfirmed : GetUnspentFromMempool(unconfirmedUTXOs))
     {
         const CTransaction oneTx = mempool.mapTx.find(oneUnconfirmed.first.txhash)->GetTx();
-        unspentOutptus.push_back(CInputDescriptor(oneTx.vout[oneUnconfirmed.first.index].scriptPubKey, oneUnconfirmed.second.amount,
-                                                    CTxIn(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index)));
+        unspentOutptus.push_back(std::make_pair(CInputDescriptor(oneTx.vout[oneUnconfirmed.first.index].scriptPubKey, oneUnconfirmed.second.amount,
+                                                    CTxIn(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index)),
+                                                0));
     }
     return true;
 }
@@ -7303,7 +7305,7 @@ void CConnectedChains::ProcessLocalImports()
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
     std::set<uint160> currenciesProcessed;
     uint160 finalizeExportKey(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CObjectFinalization::ObjectFinalizationExportKey()));
-    std::vector<CInputDescriptor> inputDescriptors;
+    std::vector<std::pair<CInputDescriptor, uint32_t>> inputDescriptors;
 
     {
         LOCK2(smartTransactionCS, mempool.cs);
@@ -7323,12 +7325,12 @@ void CConnectedChains::ProcessLocalImports()
             CTransaction scratchTx;
             int32_t importOutputNum;
             uint256 hashBlock;
-            if (oneFinalization.scriptPubKey.IsPayToCryptoCondition(p) &&
+            if (oneFinalization.first.scriptPubKey.IsPayToCryptoCondition(p) &&
                 p.IsValid() &&
                 p.evalCode == EVAL_FINALIZE_EXPORT &&
                 p.vData.size() &&
                 (of = CObjectFinalization(p.vData[0])).IsValid() &&
-                myGetTransaction(of.output.hash.IsNull() ? oneFinalization.txIn.prevout.hash : of.output.hash, scratchTx, hashBlock) &&
+                myGetTransaction(of.output.hash.IsNull() ? oneFinalization.first.txIn.prevout.hash : of.output.hash, scratchTx, hashBlock) &&
                 scratchTx.vout.size() > of.output.n &&
                 scratchTx.vout[of.output.n].scriptPubKey.IsPayToCryptoCondition(p) &&
                 p.IsValid() &&
@@ -7340,7 +7342,7 @@ void CConnectedChains::ProcessLocalImports()
                     std::make_pair(ccx.sourceHeightStart,
                                    std::make_pair(std::make_pair(CInputDescriptor(scratchTx.vout[of.output.n].scriptPubKey,
                                                                                   scratchTx.vout[of.output.n].nValue,
-                                                                                  CTxIn(of.output.hash.IsNull() ? oneFinalization.txIn.prevout.hash : of.output.hash,
+                                                                                  CTxIn(of.output.hash.IsNull() ? oneFinalization.first.txIn.prevout.hash : of.output.hash,
                                                                                   of.output.n)),
                                                                  scratchTx),
                                                   ccx)));
