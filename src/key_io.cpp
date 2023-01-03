@@ -32,6 +32,8 @@ int32_t MAX_UTXOS_ID_RESCAN = 100;      // this can be set with "-maxutxosidresc
 uint160 VERUS_NODEID;
 bool VERUS_PRIVATECHANGE;
 std::string VERUS_DEFAULT_ZADDR;
+CTxDestination VERUS_DEFAULT_ARBADDRESS;
+std::vector<uint160> VERUS_ARBITRAGE_CURRENCIES;
 
 uint160 ParseVDXFIDInternal(const std::string &vdxfName)
 {
@@ -108,6 +110,8 @@ UniValue getvdxfid_internal(const UniValue& params)
     // first, try to interpret the ID as an ID, in case it is
     CTxDestination idDest = DecodeDestination(vdxfName);
 
+    bool isIndexKey = false;
+
     if (idDest.which() == COptCCParams::ADDRTYPE_ID)
     {
         cleanName = CleanName(vdxfName, parentID, true, true);
@@ -115,6 +119,7 @@ UniValue getvdxfid_internal(const UniValue& params)
     }
     else
     {
+        isIndexKey = true;
         parentIDName = "namespace";
         vdxfID = CVDXF::GetDataKey(vdxfName, parentID);
         cleanName = vdxfName;
@@ -129,6 +134,8 @@ UniValue getvdxfid_internal(const UniValue& params)
     UniValue boundData(UniValue::VOBJ);
     if (!vdxfKeyInputUni.isNull())
     {
+        isIndexKey = true;
+
         if (hashUniValue.isNull())
         {
             vdxfID = CCrossChainRPCData::GetConditionID(vdxfID, vdxfKeyInput);
@@ -157,6 +164,7 @@ UniValue getvdxfid_internal(const UniValue& params)
     }
     else if (!hashUniValue.isNull() && !numUniValue.isNull())
     {
+        isIndexKey = true;
         vdxfID = CCrossChainRPCData::GetConditionID(vdxfID, hash256KeyKeyInput, hashInputNum);
         boundData.pushKV("uint256", hash256KeyKeyInput.GetHex());
         boundData.pushKV("indexnum", hashInputNum);
@@ -168,6 +176,10 @@ UniValue getvdxfid_internal(const UniValue& params)
 
     UniValue result(UniValue::VOBJ);
     result.pushKV("vdxfid", EncodeDestination(CIdentityID(vdxfID)));
+    if (isIndexKey)
+    {
+        result.pushKV("indexid", EncodeDestination(CIndexID(vdxfID)));
+    }
     result.pushKV("hash160result", vdxfID.GetHex());
     UniValue nameWithParent(UniValue::VOBJ);
     nameWithParent.pushKV(parentIDName, EncodeDestination(CIdentityID(parentID)));

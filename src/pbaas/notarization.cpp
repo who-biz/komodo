@@ -1133,9 +1133,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     bool thisIsLaunchSys = destCurrency.launchSystemID == ASSETCHAINS_CHAINID;
 
     // if this is the clear launch notarization after start, make the notarization and determine if we should launch or refund
-    uint256 weakEntropy = proofRoots.count(sourceSystemID) ? proofRoots.find(sourceSystemID)->second.stateRoot : uint256();
-
-    // TODO: HARDENING ensure that the latest proof root of this chain is in on gateway
+    uint256 weakEntropy = EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), notaHeight, newNotarization.currencyID);
 
     if (destCurrency.launchSystemID == sourceSystemID &&
         destCurrency.startBlock &&
@@ -1196,7 +1194,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
                     // check our currency and any co-launch currency to determine our eligibility, as ALL
                     // co-launch currencies must launch for one to launch
-                    if (CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn) < CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert) ||
+                    if (coLaunchState.IsRefunding() ||
+                        !coLaunchState.ValidateConversionLimits() ||
+                        CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn) < CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert) ||
                         (coLaunchCurrency.IsFractional() &&
                          CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn).CanonicalMap().valueMap.size() != coLaunchCurrency.currencies.size()))
                     {
@@ -1302,7 +1302,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                           &tempState,
                                                           feeRecipient,
                                                           proposer,
-                                                          weakEntropy);
+                                                          weakEntropy,
+                                                          true);
         }
         else
         {
@@ -1416,7 +1417,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                  &newNotarization.currencyState,
                                                                  feeRecipient,
                                                                  proposer,
-                                                                 weakEntropy);
+                                                                 weakEntropy,
+                                                                 true);
             if (isValidExport)
             {
                 newNotarization.currencyState.conversionPrice = tempCurState.conversionPrice;
@@ -2927,6 +2929,11 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         }
         return state.Error("ineligible");
     }
+
+    // last check for eligibility -- if we pick 20 random blocks in the last stretch of blocks, based on a PRN taken from the
+    // entropy of the last confirmed, witnessed height + current height number, are there at least 6 POS blocks among those 20?
+    // If not, the notarization is invalid, if so, record all PoS block headers from the 20, then choose one at random to prove
+    // fully.
 
     notarization = priorNotarization;
     notarization.SetBlockOneNotarization(false);
@@ -4753,14 +4760,65 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
     if (!submit)
     {
-        for (auto &oneCurState : lastConfirmedNotarization.currencyStates)
+        CPBaaSNotarization unMirrored = crosschainCND.vtx[crosschainCND.lastConfirmed].second;
+        if (!unMirrored.SetMirror(false))
         {
-            if (!crosschainCND.vtx[crosschainCND.lastConfirmed].second.currencyStates.count(oneCurState.first) ||
-                (crosschainCND.vtx[crosschainCND.lastConfirmed].second.currencyStates[oneCurState.first].IsPrelaunch() &&
-                 !oneCurState.second.IsPrelaunch()))
+            submit = true;
+        }
+        else
+        {
+            for (auto &oneCurState : lastConfirmedNotarization.currencyStates)
             {
-                submit = true;
-                break;
+                if (!unMirrored.currencyStates.count(oneCurState.first) ||
+                    (unMirrored.currencyStates[oneCurState.first].IsPrelaunch() &&
+                     !oneCurState.second.IsPrelaunch()))
+                {
+                    submit = true;
+                    break;
+                }
+
+                // if the relative price of the two sided fee currencies has changed more than 15% since last confirmed
+                // notarization, submit
+                if (oneCurState.second.IsFractional())
+                {
+                    auto curIdxMap = oneCurState.second.GetReserveMap();
+                    uint160 externID = externalSystem.GetID();
+                    if (!curIdxMap.count(ASSETCHAINS_CHAINID) || !curIdxMap.count(externID))
+                    {
+                        continue;
+                    }
+
+                    // if we are so far out of range we can't tell, submit
+                    if (!(unMirrored.currencyStates[oneCurState.first].PriceInReserve(curIdxMap[externID])) ||
+                        !(oneCurState.second.PriceInReserve(curIdxMap[externID])))
+                    {
+                        submit = true;
+                        break;
+                    }
+
+                    int64_t firstRatioOfPrice = CCurrencyDefinition::CalculateRatioOfValue(
+                                                    unMirrored.currencyStates[oneCurState.first].PriceInReserve(curIdxMap[ASSETCHAINS_CHAINID]),
+                                                    unMirrored.currencyStates[oneCurState.first].PriceInReserve(curIdxMap[externID]));
+                    int64_t secondRatioOfPrice = CCurrencyDefinition::CalculateRatioOfValue(
+                                                    oneCurState.second.PriceInReserve(curIdxMap[ASSETCHAINS_CHAINID]),
+                                                    oneCurState.second.PriceInReserve(curIdxMap[externID]));
+
+                    // if second ratio is zero, can't tell, so submit
+                    if (!secondRatioOfPrice)
+                    {
+                        submit = true;
+                        break;
+                    }
+
+                    int64_t ratioOfPriceChange = CCurrencyDefinition::CalculateRatioOfValue(firstRatioOfPrice, secondRatioOfPrice);
+
+                    // if we go up or down by 10% from the last confirmed notarization, notarize again
+                    if (ratioOfPriceChange > (SATOSHIDEN + (SATOSHIDEN / 10)) || ratioOfPriceChange < (SATOSHIDEN - (SATOSHIDEN / 10)))
+                    {
+                        submit = true;
+                        break;
+                    }
+                }
             }
         }
         if (!submit && lastConfirmedNotarization.proofRoots.count(ASSETCHAINS_CHAINID))
@@ -5130,7 +5188,37 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             if (currentNotarization.IsPreLaunch())
             {
                 // export or launch notarization
-                // TODO: HARDENING - check that the notarization is valid or confirm that this is done in export
+                if (p.evalCode == EVAL_EARNEDNOTARIZATION)
+                {
+                    return state.Error("Earned notarizations cannot be for pre-launch currencies");
+                }
+
+                // ensure that this is part of an export transaction
+                bool exportOutNum = -1;
+                CCrossChainExport exportToCheck;
+                for (int loop = 0; loop < tx.vout.size(); loop++)
+                {
+                    if ((exportToCheck = CCrossChainExport(tx.vout[loop].scriptPubKey)).IsValid() &&
+                        !exportToCheck.IsSupplemental() &&
+                        !exportToCheck.IsSystemThreadExport() &&
+                        exportToCheck.destCurrencyID == currentNotarization.currencyID)
+                    {
+                        exportOutNum = loop;
+                        break;
+                    }
+                    else
+                    {
+                        exportToCheck = CCrossChainExport();
+                    }
+                }
+
+                // export or launch notarization
+                if (exportOutNum < 0 || !exportToCheck.IsValid() || !exportToCheck.IsPrelaunch())
+                {
+                    return state.Error("Prelaunch notarization with no export on transaction");
+                }
+                // precheck on cross chain export will create a new export from transfers and the last export
+                // and ensure that it matches
             }
             else
             {

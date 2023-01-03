@@ -884,7 +884,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
         if (issuingCurrency.IsFractional())
         {
             feePricingCurrency = issuingCurrency.FeePricingCurrency();
-            if (!(pricingState = ConnectedChains.GetCurrencyState(issuerID, tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA, false)).IsValid() ||
+            if (!(pricingState = ConnectedChains.GetCurrencyState(issuerID, (tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) - 1, false)).IsValid() ||
                 !pricingState.IsLaunchConfirmed())
             {
                 return state.Error("Invalid currency state for gateway converter to register identity");
@@ -1065,7 +1065,21 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
         }
     }
 
-    // TODO: HARDENING - for PBaaS, ensure that correct systemID is set to support mapped currencies
+    // for PBaaS, ensure that correct systemID is set to support mapped currencies
+    // cases where it is valid to have an issuing parent currency that does not have a system ID of the
+    // chain registering the currency include:
+    // 1) System of systemID is launched on this chain and is not a name controller AND
+    // 2) Parent is systemID
+    if (issuingParent.systemID != ASSETCHAINS_CHAINID)
+    {
+        if (issuingParent.launchSystemID != ASSETCHAINS_CHAINID ||
+            !issuingParent.IsGateway() ||
+            issuingParent.IsNameController() ||
+            issuingParent.systemID != issuingParent.GetID())
+        {
+            return state.Error("Attempt to register ID on chain other than name controller");
+        }
+    }
 
     // CHECK #2 - must be rooted in verified valid parent
     if (newIdentity.parent != parentID &&
@@ -1381,28 +1395,9 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
         }
 
         // CHECK #6 - ensure that the transaction pays the correct mining and referral fees
-        if (isPBaaS)
+        if (rtxd.NativeFees() < (issuingParent.IDReferredRegistrationAmount() - (referrers.size() * issuingParent.IDReferralAmount())))
         {
-            if (issuerID == ASSETCHAINS_CHAINID)
-            {
-                if (rtxd.NativeFees() < (idReferredRegistrationFee - (referrers.size() * idReferralFee)))
-                {
-                    return state.Error("Invalid identity registration - insufficient fee");
-                }
-            }
-            else
-            {
-                // TODO: HARDENING - ensure that we properly check payment for fractional or centralized IDs
-                // here or elsewhere - this should only get here on centralized currencies and fix may be as easy as
-                // allowing it to run in the block above that is currently conditioned on fractional
-            }
-        }
-        else
-        {
-            if (rtxd.NativeFees() < (issuingParent.IDReferredRegistrationAmount() - (referrers.size() * issuingParent.IDReferralAmount())))
-            {
-                return state.Error("Invalid identity registration - insufficient fee");
-            }
+            return state.Error("Invalid identity registration - insufficient fee");
         }
 
         return true;
@@ -1516,7 +1511,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
         int32_t reserveIndex = issuingCurrency.GetCurrenciesMap().find(feePricingCurrency)->second;
         std::vector<std::pair<CTransaction, uint256>> txOut;
 
-        pricingState = ConnectedChains.GetCurrencyState(issuerID, tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA, false);
+        pricingState = ConnectedChains.GetCurrencyState(issuerID, (tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) - 1, false);
 
         if (feePricingCurrency != issuerID)
         {
@@ -1892,9 +1887,8 @@ bool PrecheckIdentityCommitment(const CTransaction &tx, int32_t outNum, CValidat
                     ch.reserveValues.valueMap.size() &&
                     !ch.reserveValues.valueMap.count(ASSETCHAINS_CHAINID))
                 {
-                    // TODO: HARDENING - currently, we are ensuring that a valid, advanced ch is there to
-                    // prevent use of this without actual need.
-                    // for more general use, instead of a subclass, we should abstract and contain objects in this output
+                    // for a later version:
+                    // for more general use, instead of a fixed subclass of token, we should abstract and contain objects in this output
                     COptCCParams master(p.vData.back());
                     if (master.IsValid())
                     {
@@ -2023,9 +2017,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                         return state.Error("Invalid identity on transaction output " + std::to_string(i));
                     }
 
-                    // twice through makes it invalid
-                    // TODO: HARDENING TESTNET - need to confirm that we enforce cross-chain imports only import IDs
-                    // under the control of the importing currency
+                    // twice through used to make it invalid
                     if (!advancedIdentity && validIdentity)
                     {
                         return state.Error("Invalid multiple identity definitions on one transaction");
