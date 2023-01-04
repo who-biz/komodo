@@ -1362,12 +1362,16 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             CIdentity identity;
             if (vData.size() && (identity = CIdentity(vData[0])).IsValid())
             {
-                destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(identity.GetID(), evalCode)));
+                CIndexID indexid = CIndexID(CCrossChainRPCData::GetConditionID(identity.GetID(), evalCode));
+                LogPrintf(">>>> [%s] for identity: indexid(%s), identity.GetID(%s)\n",__func__,indexid.GetHex(),identity.GetID().GetHex());
+                destinations.insert(indexid);
 
                 // index content multimap entries. also index type definitions separately for direct, non-scoped queries
                 for (auto defIT = identity.contentMultiMap.begin(); defIT != identity.contentMultiMap.end(); defIT++)
                 {
-                    destinations.insert(CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(), CCrossChainRPCData::GetConditionID(defIT->first, identity.GetID())));
+                    uint160 condition = CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(), CCrossChainRPCData::GetConditionID(defIT->first, identity.GetID()));
+                    LogPrintf(">>>> [%s] for multimap: condition(%s), defIT->first(%s)\n",__func__,condition.GetHex(),defIT->first.GetHex());
+                    destinations.insert(condition);
                     if (defIT->first == CVDXF_Data::TypeDefinitionKey())
                     {
                         CDataStream ss(defIT->second, SER_DISK, PROTOCOL_VERSION);
