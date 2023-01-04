@@ -1402,7 +1402,10 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                             if (!newTypeKey.IsNull() &&
                                 nameSpace == identity.GetID())
                             {
-                                destinations.insert(CCrossChainRPCData::GetConditionID(CVDXF_Data::TypeDefinitionKey(), newTypeKey));
+                                uint160 typeKeyCondition = CCrossChainRPCData::GetConditionID(CVDXF_Data::TypeDefinitionKey(),newTypeKey);
+                                LogPrintf(">>>> [%s] for multimap: typeDefKeyName(%s), newTypeKey(%s), typeKeyCondition(%s)\n",
+                                    __func__,typeDefKeyName,newTypeKey.GetHex(),typeKeyCondition.GetHex());
+                                destinations.insert(typeKeyCondition);
                             }
                         }
                     }
