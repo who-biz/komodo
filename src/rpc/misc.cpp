@@ -2398,6 +2398,28 @@ UniValue getaddressbalance(const UniValue& params, bool fHelp)
     return result;
 }
 
+UniValue getlastvdxfupdate(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 2)
+        throw runtime_error(
+            "getlastvdxfupdate\n"
+            "\nReturns the latest update to a given vdxf key for an identity (requires addressindex to be enabled).\n"
+            "\nArguments:\n"
+            "1. \"identity\" (string) The identity for which we are requesting data\n"
+            "2. \"vdxfid\" (string) the hash160 respresentation of the vdxfkey we are requesting\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"data\"  (string) The related data for given vdxf key\n"
+            "  \"index\"  (number) The related input or output index\n"
+            "  \"height\"  (number) The block height at which this update occured\n"
+            "}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("getlastvdxfupdate", "iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH f162246e075a6be39a0a2a2208c9a52b94d803ba")
+            + HelpExampleRpc("getlastvdxfupdate", "\"iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH\" \"f162246e075a6be39a0a2a2208c9a52b94d803ba\"")
+        );
+    return NullUniValue;
+}
+
 UniValue komodo_snapshot(int top);
 
 UniValue getsnapshot(const UniValue& params, bool fHelp)
@@ -2603,6 +2625,7 @@ static const CRPCCommand commands[] =
     { "addressindex",       "getaddressutxos",        &getaddressutxos,        false }, /* insight explorer */
     { "addressindex",       "getaddressmempool",      &getaddressmempool,      true  }, /* insight explorer */
     { "blockchain",         "getspentinfo",           &getspentinfo,           false }, /* insight explorer */
+    { "vdxf",               "getlastvdxfupdate",      &getlastvdxfupdate,      false }, /* insight explorer */
     // END insightexplorer
 
     /* Not shown in help */
