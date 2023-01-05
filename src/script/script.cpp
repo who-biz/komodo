@@ -1363,14 +1363,14 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             if (vData.size() && (identity = CIdentity(vData[0])).IsValid())
             {
                 CIndexID indexid = CIndexID(CCrossChainRPCData::GetConditionID(identity.GetID(), evalCode));
-                LogPrintf(">>>> [%s] for identity: indexid(%s), identity.GetID(%s)\n",__func__,indexid.GetHex(),identity.GetID().GetHex());
+                LogPrintf(">>>> [%s] for identity: indexid(%s)(%s), identity.GetID(%s)(%s)\n",__func__,indexid.GetHex(),EncodeDestination(indexid),identity.GetID().GetHex(),EncodeDestination(identity.GetID()));
                 destinations.insert(indexid);
 
                 // index content multimap entries. also index type definitions separately for direct, non-scoped queries
                 for (auto defIT = identity.contentMultiMap.begin(); defIT != identity.contentMultiMap.end(); defIT++)
                 {
                     uint160 condition = CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(), CCrossChainRPCData::GetConditionID(defIT->first, identity.GetID()));
-                    LogPrintf(">>>> [%s] for multimap: condition(%s), defIT->first(%s)\n",__func__,condition.GetHex(),defIT->first.GetHex());
+                    LogPrintf(">>>> [%s] for multimap: condition(%s)(%s), defIT->first(%s)(%s)\n",__func__,condition.GetHex(),EncodeDestination(CIndexID(condition)),defIT->first.GetHex(),EncodeDestination(CIndexID(defIT->first)));
                     destinations.insert(condition);
                     if (defIT->first == CVDXF_Data::TypeDefinitionKey())
                     {
