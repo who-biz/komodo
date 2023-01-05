@@ -2406,7 +2406,7 @@ UniValue getlastvdxfupdate(const UniValue& params, bool fHelp)
             "\nReturns the latest update to a given vdxf key for an identity (requires addressindex to be enabled).\n"
             "\nArguments:\n"
             "1. \"identity\" (string) The identity for which we are requesting data\n"
-            "2. \"vdxfid\" (string) the hash160 respresentation of the vdxfkey we are requesting\n"
+            "2. \"vdxfuri\" (string) the plaintext representation of the vdxfkey we are requesting\n"
             "\nResult:\n"
             "{\n"
             "  \"data\"  (string) The related data for given vdxf key\n"
@@ -2417,6 +2417,15 @@ UniValue getlastvdxfupdate(const UniValue& params, bool fHelp)
             + HelpExampleCli("getlastvdxfupdate", "iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH f162246e075a6be39a0a2a2208c9a52b94d803ba")
             + HelpExampleRpc("getlastvdxfupdate", "\"iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH\" \"f162246e075a6be39a0a2a2208c9a52b94d803ba\"")
         );
+
+    CTxDestination idID = DecodeDestination(uni_get_str(params[0]));
+    if (idID.which() != COptCCParams::ADDRTYPE_ID)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity parameter must be valid friendly name or identity address: \"" + uni_get_str(params[0]) + "\"");
+    }
+
+    LOCK(cs_main);
+
     return NullUniValue;
 }
 
