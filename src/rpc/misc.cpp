@@ -2398,11 +2398,11 @@ UniValue getaddressbalance(const UniValue& params, bool fHelp)
     return result;
 }
 
-UniValue getlastvdxfupdate(const UniValue& params, bool fHelp)
+UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 2)
         throw runtime_error(
-            "getlastvdxfupdate\n"
+            "getlastmultimapupdate\n"
             "\nReturns the latest update to a given vdxf key for an identity (requires addressindex to be enabled).\n"
             "\nArguments:\n"
             "1. \"identity\" (string) The identity for which we are requesting data\n"
@@ -2414,8 +2414,8 @@ UniValue getlastvdxfupdate(const UniValue& params, bool fHelp)
             "  \"height\"  (number) The block height at which this update occured\n"
             "}\n"
             "\nExamples:\n"
-            + HelpExampleCli("getlastvdxfupdate", "iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH f162246e075a6be39a0a2a2208c9a52b94d803ba")
-            + HelpExampleRpc("getlastvdxfupdate", "\"iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH\" \"f162246e075a6be39a0a2a2208c9a52b94d803ba\"")
+            + HelpExampleCli("getlastmultimapupdate", "iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH f162246e075a6be39a0a2a2208c9a52b94d803ba")
+            + HelpExampleRpc("getlastmultimapupdate", "\"iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH\" \"f162246e075a6be39a0a2a2208c9a52b94d803ba\"")
         );
 
     CTxDestination idID = DecodeDestination(uni_get_str(params[0]));
@@ -2628,13 +2628,13 @@ static const CRPCCommand commands[] =
 
     // START insightexplorer
     /* Address index */
-    { "addressindex",       "getaddresstxids",        &getaddresstxids,        false }, /* insight explorer */
-    { "addressindex",       "getaddressbalance",      &getaddressbalance,      false }, /* insight explorer */
-    { "addressindex",       "getaddressdeltas",       &getaddressdeltas,       false }, /* insight explorer */
-    { "addressindex",       "getaddressutxos",        &getaddressutxos,        false }, /* insight explorer */
-    { "addressindex",       "getaddressmempool",      &getaddressmempool,      true  }, /* insight explorer */
-    { "blockchain",         "getspentinfo",           &getspentinfo,           false }, /* insight explorer */
-    { "vdxf",               "getlastvdxfupdate",      &getlastvdxfupdate,      false }, /* insight explorer */
+    { "addressindex",       "getaddresstxids",       &getaddresstxids,        false }, /* insight explorer */
+    { "addressindex",       "getaddressbalance",     &getaddressbalance,      false }, /* insight explorer */
+    { "addressindex",       "getaddressdeltas",      &getaddressdeltas,       false }, /* insight explorer */
+    { "addressindex",       "getaddressutxos",       &getaddressutxos,        false }, /* insight explorer */
+    { "addressindex",       "getaddressmempool",     &getaddressmempool,      true  }, /* insight explorer */
+    { "addressindex",       "getlastmultimapupdate", &getlastmultimapupdate,  false }, /* insight explorer */
+    { "blockchain",         "getspentinfo",          &getspentinfo,           false }, /* insight explorer */
     // END insightexplorer
 
     /* Not shown in help */
