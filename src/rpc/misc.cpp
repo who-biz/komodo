@@ -2436,7 +2436,7 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
     LOCK(cs_main);
 
     std::vector<CAddressIndexDbEntry> addressIndex;
-    if (!GetAddressIndex(conditionid,CScript::P2IDX,addressIndex)) {
+    if (!GetAddressIndex(conditionid, CScript::P2IDX, addressIndex, 0, chainActive.Height())) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Failed to query addressindex for key: \"" + conditionid.GetHex() + "\"");
     } else {
         LogPrintf(">>> (%s) addressindex query successful!\n",__func__);
