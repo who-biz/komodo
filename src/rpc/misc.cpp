@@ -2425,8 +2425,20 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
     }
 
     uint160 vdxfkey;
+    CIdentityID identity = boost::get<CIdentityID>(idID);
     vdxfkey.SetHex(uni_get_str(params[1]));
     LogPrintf(">>> (%s): idID(%s), vdxfkey(%s)(%s)\n",__func__,EncodeDestination(idID),vdxfkey.GetHex(),EncodeDestination(CIndexID(vdxfkey)));
+
+    uint160 conditionid = CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(),
+        CCrossChainRPCData::GetConditionID(vdxfkey, identity));
+    LogPrintf(">>> (%s): conditionid(%s)(%s)\n",__func__,conditionid.GetHex(),EncodeDestination(CIndexID(conditionid)));
+
+    std::vector<CAddressIndexDbEntry> addressIndex;
+    if (!GetAddressIndex(conditionid,CScript::P2IDX,addressIndex)) {
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to query addressindex for condition: \"" + conditionid.GetHex() + "\"");
+    } else {
+        LogPrintf(">>> (%s) addressindex query successful!\n",__func__);
+    }
 
     LOCK(cs_main);
 
