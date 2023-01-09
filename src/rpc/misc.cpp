@@ -2406,7 +2406,7 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
             "\nReturns the latest update to a given vdxf key for an identity (requires addressindex to be enabled).\n"
             "\nArguments:\n"
             "1. \"identity\" (string) The identity for which we are requesting data\n"
-            "2. \"vdxfuri\" (string) the plaintext representation of the vdxfkey we are requesting\n"
+            "2. \"vdxfkey\" (string) the hash160 of the vdxfkey we are requesting\n"
             "\nResult:\n"
             "{\n"
             "  \"data\"  (string) The related data for given vdxf key\n"
@@ -2423,6 +2423,10 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity parameter must be valid friendly name or identity address: \"" + uni_get_str(params[0]) + "\"");
     }
+
+    uint160 vdxfkey;
+    vdxfkey.SetHex(uni_get_str(params[1]));
+    LogPrintf(">>> (%s): idID(%s), vdxfkey(%s)(%s)\n",__func__,EncodeDestination(idID),vdxfkey.GetHex(),EncodeDestination(CIndexID(vdxfkey)));
 
     LOCK(cs_main);
 
