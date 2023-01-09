@@ -2433,16 +2433,23 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
         CCrossChainRPCData::GetConditionID(vdxfkey, identity));
     LogPrintf(">>> (%s): conditionid(%s)(%s)\n",__func__,conditionid.GetHex(),EncodeDestination(CIndexID(conditionid)));
 
+    LOCK(cs_main);
+
     std::vector<CAddressIndexDbEntry> addressIndex;
     if (!GetAddressIndex(conditionid,CScript::P2IDX,addressIndex)) {
-        throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to query addressindex for condition: \"" + conditionid.GetHex() + "\"");
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Failed to query addressindex for key: \"" + conditionid.GetHex() + "\"");
     } else {
         LogPrintf(">>> (%s) addressindex query successful!\n",__func__);
     }
 
-    LOCK(cs_main);
-
-    return NullUniValue;
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("satoshis", addressIndex.end()->second));
+    result.push_back(Pair("txid", addressIndex.end()->first.txhash.GetHex()));
+    result.push_back(Pair("index", (int)addressIndex.end()->first.index));
+    result.push_back(Pair("blockindex", (int)addressIndex.end()->first.txindex));
+    result.push_back(Pair("height", (int)addressIndex.end()->first.blockHeight));
+    result.push_back(Pair("indexid", EncodeDestination(CIndexID(conditionid))));
+    return result;
 }
 
 UniValue komodo_snapshot(int top);
