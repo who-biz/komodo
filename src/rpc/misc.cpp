@@ -2418,19 +2418,19 @@ UniValue getmultimapdeltasforkey(const UniValue& params, bool fHelp)
             + HelpExampleRpc("getmultimapdeltasforkey", "\"iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH\" \"f162246e075a6be39a0a2a2208c9a52b94d803ba\"")
         );
 
-    CTxDestination idID = DecodeDestination(uni_get_str(params[0]));
-    if (idID.which() != COptCCParams::ADDRTYPE_ID)
+    CTxDestination idDest = DecodeDestination(uni_get_str(params[0]));
+    if (idDest.which() != COptCCParams::ADDRTYPE_ID)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity parameter must be valid friendly name or identity address: \"" + uni_get_str(params[0]) + "\"");
     }
 
     uint160 vdxfkey;
-    CIdentityID identity = boost::get<CIdentityID>(idID);
+    uint160 idID = GetDestinationID(idDest);
     vdxfkey.SetHex(uni_get_str(params[1]));
-    LogPrintf(">>> (%s): idID(%s), vdxfkey(%s)(%s)\n",__func__,EncodeDestination(idID),vdxfkey.GetHex(),EncodeDestination(CIndexID(vdxfkey)));
+    LogPrintf(">>> (%s): idID(%s), vdxfkey(%s)(%s)\n",__func__,EncodeDestination(idDest),vdxfkey.GetHex(),EncodeDestination(CIndexID(vdxfkey)));
 
     uint160 conditionid = CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(),
-        CCrossChainRPCData::GetConditionID(vdxfkey, identity));
+        CCrossChainRPCData::GetConditionID(vdxfkey, idID));
     LogPrintf(">>> (%s): conditionid(%s)(%s)\n",__func__,conditionid.GetHex(),EncodeDestination(CIndexID(conditionid)));
 
     UniValue result(UniValue::VOBJ);
@@ -2440,7 +2440,7 @@ UniValue getmultimapdeltasforkey(const UniValue& params, bool fHelp)
     {
         LOCK(cs_main);
         std::vector<CAddressIndexDbEntry> addressIndex;
-        if (!GetAddressIndex(conditionid, CScript::P2IDX, addressIndex, 0, chainActive.Height())) {
+        if (!GetAddressIndex(conditionid, CScript::P2IDX, addressIndex)) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Failed to query addressindex for key: \"" + conditionid.GetHex() + "\"");
         } else {
             LogPrintf(">>> (%s) addressindex query successful!\n",__func__);
