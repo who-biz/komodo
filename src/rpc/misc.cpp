@@ -2409,9 +2409,13 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
             "2. \"vdxfkey\" (string) the hash160 of the vdxfkey we are requesting\n"
             "\nResult:\n"
             "{\n"
-            "  \"data\"  (string) The related data for given vdxf key\n"
+            "  \"txid\"  (string) Transaction hash for the given index entry\n"
             "  \"index\"  (number) The related input or output index\n"
+            "  \"blockindex\"  (number) The index for entry within a given block\n"
+            "  \"blockhash\"  (string) The hash of block containing transaction\n"
             "  \"height\"  (number) The block height at which this update occured\n"
+            "  \"indexid\"  (string) Encoded destination for requested ID and key\n"
+            "  \"data\"  (string) The related data for given vdxf key\n"
             "}\n"
             "\nExamples:\n"
             + HelpExampleCli("getlastmultimapupdate", "iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH f162246e075a6be39a0a2a2208c9a52b94d803ba")
@@ -2450,12 +2454,45 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
 
     UniValue result(UniValue::VOBJ);
     std::vector<std::pair<CAddressIndexKey,CAmount>>::const_iterator it = std::prev(addressIndex.end());
-    result.push_back(Pair("satoshis", it->second));
-    result.push_back(Pair("txid", it->first.txhash.GetHex()));
+    int nHeight = it->first.blockHeight;
+    uint256 hashTx = it->first.txhash;
+    CBlockIndex* pblockindex = chainActive[nHeight];
+    uint256 hashBlock = pblockindex->GetBlockHash();
+
+//    result.push_back(Pair("satoshis", it->second));
+    result.push_back(Pair("txid", hashTx.GetHex()));
     result.push_back(Pair("index", (int)it->first.index));
     result.push_back(Pair("blockindex", (int)it->first.txindex));
-    result.push_back(Pair("height", (int)it->first.blockHeight));
+    result.push_back(Pair("blockhash", hashBlock.GetHex()));
+    result.push_back(Pair("height", nHeight));
     result.push_back(Pair("indexid", EncodeDestination(CIndexID(conditionid))));
+
+    CTransaction tx;
+    if (!GetTransaction(hashTx, tx, hashBlock, true))
+    {
+         throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to retrieve transaction for given txid and blockhash");
+    }
+
+    COptCCParams p; CIdentity identity;
+    if (tx.vout[it->first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
+        p.IsValid() &&
+        p.evalCode == EVAL_IDENTITY_PRIMARY &&
+        p.vData.size() &&
+        (identity =  CIdentity(p.vData[0])).IsValid())
+    {
+        for (const auto& each : identity.contentMultiMap)
+        {
+            if (vdxfkey == each.first)
+            {
+                 LogPrintf(">>> (%s) found matching multimap entry for %s\n",__func__,each.first.GetHex());
+                 
+            }
+            else
+            {
+                 throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to find matching key in contentmultimap for given index!");
+            }
+        }
+    }
 
 /*    int counter = 0;
 
