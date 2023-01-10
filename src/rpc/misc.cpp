@@ -2406,7 +2406,7 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
             "\nReturns the latest update to a given vdxf key for an identity (requires addressindex to be enabled).\n"
             "\nArguments:\n"
             "1. \"identity\" (string) The identity for which we are requesting data\n"
-            "2. \"vdxfkey\" (string) the hash160 of the vdxfkey we are requesting\n"
+            "2. \"vdxfkey\" (string) identity address of the key which we are requesting\n"
             "\nResult:\n"
             "{\n"
             "  \"txid\"  (string) Transaction hash for the given index entry\n"
@@ -2418,8 +2418,8 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
             "  \"data\"  (string) The related data for given vdxf key\n"
             "}\n"
             "\nExamples:\n"
-            + HelpExampleCli("getlastmultimapupdate", "iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH f162246e075a6be39a0a2a2208c9a52b94d803ba")
-            + HelpExampleRpc("getlastmultimapupdate", "\"iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH\" \"f162246e075a6be39a0a2a2208c9a52b94d803ba\"")
+            + HelpExampleCli("getlastmultimapupdate", "iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH i3c4KXCb3rKheMA5AmWyH3py3Dou3oah87")
+            + HelpExampleRpc("getlastmultimapupdate", "\"iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH\" \"i3c4KXCb3rKheMA5AmWyH3py3Dou3oah87\"")
         );
 
     CTxDestination idDest = DecodeDestination(uni_get_str(params[0]));
@@ -2428,9 +2428,15 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity parameter must be valid friendly name or identity address: \"" + uni_get_str(params[0]) + "\"");
     }
 
-    uint160 vdxfkey;
+    CTxDestination keyDest = DecodeDestination(uni_get_str(params[1]));
+    if (idDest.which() != COptCCParams::ADDRTYPE_ID)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "vdxfkey parameter must be formatted as identity address: \"" + uni_get_str(params[1]) + "\"");
+    }
+
     uint160 idID = GetDestinationID(idDest);
-    vdxfkey.SetHex(uni_get_str(params[1]));
+    uint160 vdxfkey = GetDestinationID(keyDest);
+//    vdxfkey.SetHex(uni_get_str(params[1]));
     LogPrintf(">>> (%s): idID(%s), vdxfkey(%s)(%s)\n",__func__,EncodeDestination(idDest),vdxfkey.GetHex(),EncodeDestination(CIndexID(vdxfkey)));
 
     uint160 conditionid = CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(),
@@ -2481,17 +2487,18 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
         p.vData.size() &&
         (identity =  CIdentity(p.vData[0])).IsValid())
     {
-        for (const auto& each : identity.contentMultiMap)
+        for (auto defIT = identity.contentMultiMap.begin(); defIT != identity.contentMultiMap.end(); defIT++)
         {
-            if (vdxfkey == each.first)
+            if (vdxfkey == defIT->first)
             {
-                 LogPrintf(">>> (%s) found matching multimap entry for %s\n",__func__,each.first.GetHex());
-                 std::string data = HexStr(each.second.begin(), each.second.end());
+                 LogPrintf(">>> (%s) found matching multimap entry for %s\n",__func__,defIT->first.GetHex());
+                 std::string data = HexStr(defIT->second.begin(), defIT->second.end());
                  result.push_back(Pair("data",data));
             }
             else
             {
-                 throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to find matching key in contentmultimap for given index!");
+                 continue;
+                 //throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to find matching key in contentmultimap for given index!");
             }
         }
     }
