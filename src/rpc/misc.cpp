@@ -2398,11 +2398,11 @@ UniValue getaddressbalance(const UniValue& params, bool fHelp)
     return result;
 }
 
-UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
+UniValue getmultimapdeltasforkey(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 2)
         throw runtime_error(
-            "getlastmultimapupdate\n"
+            "getmultimapdeltasforkey\n"
             "\nReturns the latest update to a given vdxf key for an identity (requires addressindex to be enabled).\n"
             "\nArguments:\n"
             "1. \"identity\" (string) The identity for which we are requesting data\n"
@@ -2414,8 +2414,8 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
             "  \"height\"  (number) The block height at which this update occured\n"
             "}\n"
             "\nExamples:\n"
-            + HelpExampleCli("getlastmultimapupdate", "iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH f162246e075a6be39a0a2a2208c9a52b94d803ba")
-            + HelpExampleRpc("getlastmultimapupdate", "\"iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH\" \"f162246e075a6be39a0a2a2208c9a52b94d803ba\"")
+            + HelpExampleCli("getmultimapdeltasforkey", "iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH f162246e075a6be39a0a2a2208c9a52b94d803ba")
+            + HelpExampleRpc("getmultimapdeltasforkey", "\"iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH\" \"f162246e075a6be39a0a2a2208c9a52b94d803ba\"")
         );
 
     CTxDestination idID = DecodeDestination(uni_get_str(params[0]));
@@ -2433,22 +2433,34 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
         CCrossChainRPCData::GetConditionID(vdxfkey, identity));
     LogPrintf(">>> (%s): conditionid(%s)(%s)\n",__func__,conditionid.GetHex(),EncodeDestination(CIndexID(conditionid)));
 
-    LOCK(cs_main);
-
-    std::vector<CAddressIndexDbEntry> addressIndex;
-    if (!GetAddressIndex(conditionid, CScript::P2IDX, addressIndex, 0, chainActive.Height())) {
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Failed to query addressindex for key: \"" + conditionid.GetHex() + "\"");
-    } else {
-        LogPrintf(">>> (%s) addressindex query successful!\n",__func__);
-    }
-
     UniValue result(UniValue::VOBJ);
-    result.push_back(Pair("satoshis", addressIndex.end()->second));
-    result.push_back(Pair("txid", addressIndex.end()->first.txhash.GetHex()));
-    result.push_back(Pair("index", (int)addressIndex.end()->first.index));
-    result.push_back(Pair("blockindex", (int)addressIndex.end()->first.txindex));
-    result.push_back(Pair("height", (int)addressIndex.end()->first.blockHeight));
+
+    int counter = 0;
+    UniValue deltas(UniValue::VARR);
+    {
+        LOCK(cs_main);
+        std::vector<CAddressIndexDbEntry> addressIndex;
+        if (!GetAddressIndex(conditionid, CScript::P2IDX, addressIndex, 0, chainActive.Height())) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Failed to query addressindex for key: \"" + conditionid.GetHex() + "\"");
+        } else {
+            LogPrintf(">>> (%s) addressindex query successful!\n",__func__);
+        }
+
+        for (std::vector<std::pair<CAddressIndexKey, CAmount> >::const_iterator it=addressIndex.begin(); it!=addressIndex.end(); it++)
+        {
+            counter++;
+            UniValue delta(UniValue::VOBJ);
+            delta.push_back(Pair("satoshis", it->second));
+            delta.push_back(Pair("txid", it->first.txhash.GetHex()));
+            delta.push_back(Pair("index", (int)it->first.index));
+            delta.push_back(Pair("blockindex", (int)it->first.txindex));
+            delta.push_back(Pair("height", (int)it->first.blockHeight));
+            deltas.push_back(delta);
+        }
+    }
+    LogPrintf(">>> (%s) addressIndex entries count = %d\n",__func__,counter);
     result.push_back(Pair("indexid", EncodeDestination(CIndexID(conditionid))));
+    result.push_back(Pair("deltas", deltas));
     return result;
 }
 
@@ -2651,13 +2663,13 @@ static const CRPCCommand commands[] =
 
     // START insightexplorer
     /* Address index */
-    { "addressindex",       "getaddresstxids",       &getaddresstxids,        false }, /* insight explorer */
-    { "addressindex",       "getaddressbalance",     &getaddressbalance,      false }, /* insight explorer */
-    { "addressindex",       "getaddressdeltas",      &getaddressdeltas,       false }, /* insight explorer */
-    { "addressindex",       "getaddressutxos",       &getaddressutxos,        false }, /* insight explorer */
-    { "addressindex",       "getaddressmempool",     &getaddressmempool,      true  }, /* insight explorer */
-    { "addressindex",       "getlastmultimapupdate", &getlastmultimapupdate,  false }, /* insight explorer */
-    { "blockchain",         "getspentinfo",          &getspentinfo,           false }, /* insight explorer */
+    { "addressindex",       "getaddresstxids",         &getaddresstxids,          false }, /* insight explorer */
+    { "addressindex",       "getaddressbalance",       &getaddressbalance,        false }, /* insight explorer */
+    { "addressindex",       "getaddressdeltas",        &getaddressdeltas,         false }, /* insight explorer */
+    { "addressindex",       "getaddressutxos",         &getaddressutxos,          false }, /* insight explorer */
+    { "addressindex",       "getaddressmempool",       &getaddressmempool,        true  }, /* insight explorer */
+    { "addressindex",       "getmultimapdeltasforkey", &getmultimapdeltasforkey,  false }, /* insight explorer */
+    { "blockchain",         "getspentinfo",            &getspentinfo,             false }, /* insight explorer */
     // END insightexplorer
 
     /* Not shown in help */
