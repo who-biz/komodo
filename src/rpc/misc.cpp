@@ -2480,6 +2480,7 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
     }
 
     COptCCParams p; CIdentity identity;
+    bool keyFound = false;
 //    UniValue data(UniValue::VOBJ);
     if (tx.vout[it->first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
         p.IsValid() &&
@@ -2494,13 +2495,18 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
                  LogPrintf(">>> (%s) found matching multimap entry for %s\n",__func__,defIT->first.GetHex());
                  std::string data = HexStr(defIT->second.begin(), defIT->second.end());
                  result.push_back(Pair("data",data));
+                 keyFound = true;
             }
             else
             {
                  continue;
-                 //throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to find matching key in contentmultimap for given index!");
             }
         }
+    }
+    if (!keyFound)
+    {
+        // probably impossible given the fact that we are querying index
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to find matching key in contentmultimap for given index!");
     }
     return result;
 }
