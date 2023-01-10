@@ -2398,11 +2398,11 @@ UniValue getaddressbalance(const UniValue& params, bool fHelp)
     return result;
 }
 
-UniValue getmultimapdeltasforkey(const UniValue& params, bool fHelp)
+UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 2)
         throw runtime_error(
-            "getmultimapdeltasforkey\n"
+            "getlastmultimapupdate\n"
             "\nReturns the latest update to a given vdxf key for an identity (requires addressindex to be enabled).\n"
             "\nArguments:\n"
             "1. \"identity\" (string) The identity for which we are requesting data\n"
@@ -2414,8 +2414,8 @@ UniValue getmultimapdeltasforkey(const UniValue& params, bool fHelp)
             "  \"height\"  (number) The block height at which this update occured\n"
             "}\n"
             "\nExamples:\n"
-            + HelpExampleCli("getmultimapdeltasforkey", "iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH f162246e075a6be39a0a2a2208c9a52b94d803ba")
-            + HelpExampleRpc("getmultimapdeltasforkey", "\"iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH\" \"f162246e075a6be39a0a2a2208c9a52b94d803ba\"")
+            + HelpExampleCli("getlastmultimapupdate", "iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH f162246e075a6be39a0a2a2208c9a52b94d803ba")
+            + HelpExampleRpc("getlastmultimapupdate", "\"iBiobcQ49xpTuL897iAjkYfosbQLMNpUjH\" \"f162246e075a6be39a0a2a2208c9a52b94d803ba\"")
         );
 
     CTxDestination idDest = DecodeDestination(uni_get_str(params[0]));
@@ -2433,9 +2433,32 @@ UniValue getmultimapdeltasforkey(const UniValue& params, bool fHelp)
         CCrossChainRPCData::GetConditionID(vdxfkey, idID));
     LogPrintf(">>> (%s): conditionid(%s)(%s)\n",__func__,conditionid.GetHex(),EncodeDestination(CIndexID(conditionid)));
 
-    UniValue result(UniValue::VOBJ);
+    LOCK(cs_main);
+    std::vector<CAddressIndexDbEntry> addressIndex;
+    if (!GetAddressIndex(conditionid, CScript::P2IDX, addressIndex))
+    {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Failed to query addressindex for key: \"" + conditionid.GetHex() + "\"");
+    }
+    else
+    {
+        LogPrintf(">>> (%s) addressindex query successful!\n",__func__);
+        if (addressIndex.empty())
+        {
+            throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to retrieve any index for ID and key pair");
+        }
+    }
 
-    int counter = 0;
+    UniValue result(UniValue::VOBJ);
+    std::vector<std::pair<CAddressIndexKey,CAmount>>::const_iterator it = std::prev(addressIndex.end());
+    result.push_back(Pair("satoshis", it->second));
+    result.push_back(Pair("txid", it->first.txhash.GetHex()));
+    result.push_back(Pair("index", (int)it->first.index));
+    result.push_back(Pair("blockindex", (int)it->first.txindex));
+    result.push_back(Pair("height", (int)it->first.blockHeight));
+    result.push_back(Pair("indexid", EncodeDestination(CIndexID(conditionid))));
+
+/*    int counter = 0;
+
     UniValue deltas(UniValue::VARR);
     {
         LOCK(cs_main);
@@ -2460,7 +2483,8 @@ UniValue getmultimapdeltasforkey(const UniValue& params, bool fHelp)
     }
     LogPrintf(">>> (%s) addressIndex entries count = %d\n",__func__,counter);
     result.push_back(Pair("indexid", EncodeDestination(CIndexID(conditionid))));
-    result.push_back(Pair("deltas", deltas));
+    result.push_back(Pair("deltas", deltas));*/
+
     return result;
 }
 
@@ -2668,7 +2692,7 @@ static const CRPCCommand commands[] =
     { "addressindex",       "getaddressdeltas",        &getaddressdeltas,         false }, /* insight explorer */
     { "addressindex",       "getaddressutxos",         &getaddressutxos,          false }, /* insight explorer */
     { "addressindex",       "getaddressmempool",       &getaddressmempool,        true  }, /* insight explorer */
-    { "addressindex",       "getmultimapdeltasforkey", &getmultimapdeltasforkey,  false }, /* insight explorer */
+    { "addressindex",       "getlastmultimapupdate",   &getlastmultimapupdate,    false },
     { "blockchain",         "getspentinfo",            &getspentinfo,             false }, /* insight explorer */
     // END insightexplorer
 
