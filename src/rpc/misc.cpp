@@ -2474,6 +2474,7 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
     }
 
     COptCCParams p; CIdentity identity;
+//    UniValue data(UniValue::VOBJ);
     if (tx.vout[it->first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
         p.IsValid() &&
         p.evalCode == EVAL_IDENTITY_PRIMARY &&
@@ -2485,7 +2486,8 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
             if (vdxfkey == each.first)
             {
                  LogPrintf(">>> (%s) found matching multimap entry for %s\n",__func__,each.first.GetHex());
-                 
+                 std::string data = HexStr(each.second.begin(), each.second.end());
+                 result.push_back(Pair("data",data));
             }
             else
             {
@@ -2493,35 +2495,6 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
             }
         }
     }
-
-/*    int counter = 0;
-
-    UniValue deltas(UniValue::VARR);
-    {
-        LOCK(cs_main);
-        std::vector<CAddressIndexDbEntry> addressIndex;
-        if (!GetAddressIndex(conditionid, CScript::P2IDX, addressIndex)) {
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Failed to query addressindex for key: \"" + conditionid.GetHex() + "\"");
-        } else {
-            LogPrintf(">>> (%s) addressindex query successful!\n",__func__);
-        }
-
-        for (std::vector<std::pair<CAddressIndexKey, CAmount> >::const_iterator it=addressIndex.begin(); it!=addressIndex.end(); it++)
-        {
-            counter++;
-            UniValue delta(UniValue::VOBJ);
-            delta.push_back(Pair("satoshis", it->second));
-            delta.push_back(Pair("txid", it->first.txhash.GetHex()));
-            delta.push_back(Pair("index", (int)it->first.index));
-            delta.push_back(Pair("blockindex", (int)it->first.txindex));
-            delta.push_back(Pair("height", (int)it->first.blockHeight));
-            deltas.push_back(delta);
-        }
-    }
-    LogPrintf(">>> (%s) addressIndex entries count = %d\n",__func__,counter);
-    result.push_back(Pair("indexid", EncodeDestination(CIndexID(conditionid))));
-    result.push_back(Pair("deltas", deltas));*/
-
     return result;
 }
 
