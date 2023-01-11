@@ -1033,6 +1033,8 @@ std::vector<unsigned char> VectorEncodeVDXFUni(const UniValue &obj)
             ss << VARINT(1);
             std::vector<unsigned char> byteVec = ParseHex(uni_get_str(oneValValues[k]));
             ss << VARINT(GetSerializeSize(ss, byteVec));
+            LogPrintf(">>> (%s) DataByteVectorKey(%s), byteVec(%s), SerializeSize(%d)\n",
+                __func__,HexStr(objTypeKey),HexStr(byteVec),GetSerializeSize(ss,byteVec));
             ss << byteVec;
         }
         else if (objTypeKey == CVDXF_Data::DataCurrencyMapKey())
