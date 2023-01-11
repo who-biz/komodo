@@ -595,6 +595,8 @@ public:
 
     UniValue ToUniValue() const;
 
+    UniValue DecodeMultiMapEntry(std::pair<uint160, std::vector<unsigned char>> const& entry) const;
+
     void UpgradeVersion(uint32_t height)
     {
         // to make the code simpler, these are just done in order, and more than one may be done if an ID

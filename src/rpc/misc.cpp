@@ -2481,7 +2481,7 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
 
     COptCCParams p; CIdentity identity;
     bool keyFound = false;
-//    UniValue data(UniValue::VOBJ);
+    UniValue data(UniValue::VARR);
     if (tx.vout[it->first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
         p.IsValid() &&
         p.evalCode == EVAL_IDENTITY_PRIMARY &&
@@ -2493,7 +2493,8 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
             if (vdxfkey == defIT->first)
             {
                  LogPrintf(">>> (%s) found matching multimap entry for %s\n",__func__,defIT->first.GetHex());
-                 std::string data = HexStr(defIT->second.begin(), defIT->second.end());
+                 data = identity.DecodeMultiMapEntry(*defIT);
+                 //std::string data = HexStr(defIT->second.begin(), defIT->second.end());
                  result.push_back(Pair("data",data));
                  keyFound = true;
             }

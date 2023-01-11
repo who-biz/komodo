@@ -1190,8 +1190,116 @@ UniValue CPrincipal::ToUniValue() const
     return obj;
 }
 
-UniValue CIdentity::ToUniValue() const
+UniValue CIdentity::DecodeMultiMapEntry(std::pair<uint160, std::vector<unsigned char>> const& entry) const
 {
+    UniValue entryArr(UniValue::VARR);
+
+    // if we have room for a known 20 byte value, check to see if it is one
+    CDataStream ss(entry.second, PROTOCOL_VERSION, SER_DISK);
+    bool objOut = false;
+    UniValue entryUni(UniValue::VOBJ);
+
+    while (ss.size() > sizeof(uint160))
+    {
+        try
+        {
+            uint160 checkVal;
+            uint32_t version;
+            int64_t objSize;
+            ss >> checkVal;
+            UniValue objectUni(UniValue::VNULL);
+
+            if (checkVal == CVDXF_Data::DataCurrencyMapKey())
+            {
+                CCurrencyValueMap oneCurrencyMap;
+                ss >> VARINT(version);
+                ss >> VARINT(objSize);
+                ss >> oneCurrencyMap;
+                if (oneCurrencyMap.IsValid())
+                {
+                    objectUni = oneCurrencyMap.ToUniValue();
+                }
+            }
+            else if (checkVal == CVDXF_Data::DataRatingsKey())
+            {
+                CRating oneRatingObj;
+                ss >> VARINT(version);
+                ss >> VARINT(objSize);
+                ss >> oneRatingObj;
+                if (oneRatingObj.IsValid())
+                {
+                    objectUni = oneRatingObj.ToUniValue();
+                }
+            }
+            else if (checkVal == CVDXF_Data::DataTransferDestinationKey())
+            {
+                CTransferDestination oneTransferDest;
+                ss >> VARINT(version);
+                ss >> VARINT(objSize);
+                ss >> oneTransferDest;
+                if (oneTransferDest.IsValid())
+                {
+                    objectUni = oneTransferDest.ToUniValue();
+                }
+            }
+            else if (checkVal == CVDXF_Data::ContentMultiMapRemoveKey())
+            {
+                CContentMultiMapRemove oneContentRemove;
+                ss >> VARINT(version);
+                ss >> VARINT(objSize);
+                ss >> oneContentRemove;
+                if (oneContentRemove.IsValid())
+                {
+                    objectUni = oneContentRemove.ToUniValue();
+                }
+            }
+            else if (checkVal == CVDXF_Data::DataStringKey())
+            {
+                std::string stringVal;
+                ss >> VARINT(version);
+                ss >> VARINT(objSize);
+                ss >> stringVal;
+                objectUni = stringVal;
+            }
+            else if (checkVal == CVDXF_Data::DataByteVectorKey())
+            {
+                std::vector<unsigned char> vecVal;
+                ss >> VARINT(version);
+                ss >> VARINT(objSize);
+                ss >> vecVal;
+                objectUni = HexBytes(&(vecVal[0]), vecVal.size());
+            }
+
+            // if we have an object that we recognized, encode it
+            if (!objectUni.isNull())
+            {
+                objOut = true;
+                entryUni.pushKV(EncodeDestination(CIdentityID(checkVal)), objectUni);
+            }
+            else
+            {
+                objOut = false;
+                break;
+            }
+        }
+        catch (...)
+        {
+            objOut = false;
+            break;
+        }
+     }
+     if (objOut)
+     {
+         entryArr.push_back(entryUni);
+     }
+     else
+     {
+        entryArr.push_back(HexBytes(&(entry.second[0]), entry.second.size()));
+     }
+     return entryArr;
+}
+
+UniValue CIdentity::ToUniValue() const {
     UniValue obj = ((CPrincipal *)this)->ToUniValue();
     obj.push_back(Pair("name", name));
 
