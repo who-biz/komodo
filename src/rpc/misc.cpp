@@ -2436,7 +2436,6 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
 
     uint160 idID = GetDestinationID(idDest);
     uint160 vdxfkey = GetDestinationID(keyDest);
-//    vdxfkey.SetHex(uni_get_str(params[1]));
     LogPrintf(">>> (%s): idID(%s), vdxfkey(%s)(%s)\n",__func__,EncodeDestination(idDest),vdxfkey.GetHex(),EncodeDestination(CIndexID(vdxfkey)));
 
     uint160 conditionid = CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(),
@@ -2465,15 +2464,7 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
     CBlockIndex* pblockindex = chainActive[nHeight];
     uint256 hashBlock = pblockindex->GetBlockHash();
 
-//    result.push_back(Pair("satoshis", it->second));
-    result.push_back(Pair("txid", hashTx.GetHex()));
-    result.push_back(Pair("index", (int)it->first.index));
-    result.push_back(Pair("blockindex", (int)it->first.txindex));
-    result.push_back(Pair("blockhash", hashBlock.GetHex()));
-    result.push_back(Pair("height", nHeight));
-    result.push_back(Pair("indexid", EncodeDestination(CIndexID(conditionid))));
-
-    CTransaction tx;
+    CTransaction tx, priorOutTx;
     if (!GetTransaction(hashTx, tx, hashBlock, true))
     {
          throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to retrieve transaction for given txid and blockhash");
@@ -2481,6 +2472,7 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
 
     COptCCParams p; CIdentity identity;
     bool keyFound = false;
+
     UniValue data(UniValue::VARR);
     if (tx.vout[it->first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
         p.IsValid() &&
@@ -2494,20 +2486,61 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
             {
                  LogPrintf(">>> (%s) found matching multimap entry for %s\n",__func__,defIT->first.GetHex());
                  data = identity.DecodeMultiMapEntry(*defIT);
-                 //std::string data = HexStr(defIT->second.begin(), defIT->second.end());
                  result.push_back(Pair("data",data));
                  keyFound = true;
             }
             else
             {
-                 continue;
+                continue;
             }
         }
     }
     if (!keyFound)
     {
-        // probably impossible given the fact that we are querying index
-        throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to find matching key in contentmultimap for given index!");
+        it = std::prev(it);
+        nHeight = it->first.blockHeight;
+        hashTx = it->first.txhash;
+        pblockindex = chainActive[nHeight];
+        hashBlock = pblockindex->GetBlockHash();
+        if (GetTransaction(tx.vin[it->first.index].prevout.hash, priorOutTx, hashBlock,true))
+        {
+            if (priorOutTx.vout[tx.vin[it->first.index].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_IDENTITY_PRIMARY &&
+                p.vData.size() &&
+                (identity =  CIdentity(p.vData[0])).IsValid())
+            {
+                for (auto defIT = identity.contentMultiMap.begin(); defIT != identity.contentMultiMap.end(); defIT++)
+                {
+                    if (vdxfkey == defIT->first)
+                    {
+                        LogPrintf(">>> (%s) found matching multimap entry for %s, in second loop\n",__func__,defIT->first.GetHex());
+                        data = identity.DecodeMultiMapEntry(*defIT);
+                        result.push_back(Pair("data",data));
+                        keyFound = true;
+                    }
+                    else
+                    {
+                        continue;
+                    }
+                }
+                if (!keyFound)
+                {
+                    // probably impossible given the fact that we are querying index
+                    throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to find matching key in contentmultimap, in indexed vout, or prevout!");
+                }
+            }
+        }
+        else
+        {
+           throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to get transaction for prevout, and no data bound in current id state!");
+        }
+        result.push_back(Pair("txid", hashTx.GetHex()));
+        result.push_back(Pair("index", (int)it->first.index));
+        result.push_back(Pair("blockindex", (int)it->first.txindex));
+        result.push_back(Pair("blockhash", hashBlock.GetHex()));
+        result.push_back(Pair("height", nHeight));
+        result.push_back(Pair("indexid", EncodeDestination(CIndexID(conditionid))));
     }
     return result;
 }
