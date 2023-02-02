@@ -2486,7 +2486,6 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
             {
                  LogPrintf(">>> (%s) found matching multimap entry for %s\n",__func__,defIT->first.GetHex());
                  data = identity.DecodeMultiMapEntry(*defIT);
-                 result.push_back(Pair("data",data));
                  keyFound = true;
             }
             else
@@ -2516,7 +2515,6 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
                     {
                         LogPrintf(">>> (%s) found matching multimap entry for %s, in second loop\n",__func__,defIT->first.GetHex());
                         data = identity.DecodeMultiMapEntry(*defIT);
-                        result.push_back(Pair("data",data));
                         keyFound = true;
                     }
                     else
@@ -2535,13 +2533,15 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
         {
            throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to get transaction for prevout, and no data bound in current id state!");
         }
-        result.push_back(Pair("txid", hashTx.GetHex()));
-        result.push_back(Pair("index", (int)it->first.index));
-        result.push_back(Pair("blockindex", (int)it->first.txindex));
-        result.push_back(Pair("blockhash", hashBlock.GetHex()));
-        result.push_back(Pair("height", nHeight));
-        result.push_back(Pair("indexid", EncodeDestination(CIndexID(conditionid))));
     }
+
+    result.push_back(Pair("txid", hashTx.GetHex()));
+    result.push_back(Pair("index", (int)it->first.index));
+    result.push_back(Pair("blockindex", (int)it->first.txindex));
+    result.push_back(Pair("blockhash", hashBlock.GetHex()));
+    result.push_back(Pair("height", nHeight));
+    result.push_back(Pair("indexid", EncodeDestination(CIndexID(conditionid))));
+    result.push_back(Pair("data", data));
     return result;
 }
 
