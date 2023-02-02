@@ -2471,7 +2471,7 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
     }
 
     COptCCParams p; CIdentity identity;
-    bool keyFound = false;
+    std::multimap<uint160, std::vector<unsigned char>>::iterator defIT;
 
     UniValue data(UniValue::VARR);
     if (tx.vout[it->first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
@@ -2480,59 +2480,53 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
         p.vData.size() &&
         (identity =  CIdentity(p.vData[0])).IsValid())
     {
-        for (auto defIT = identity.contentMultiMap.begin(); defIT != identity.contentMultiMap.end(); defIT++)
+        defIT = identity.contentMultiMap.find(vdxfkey);
+        if (defIT != identity.contentMultiMap.end())
         {
-            if (vdxfkey == defIT->first)
-            {
-                 LogPrintf(">>> (%s) found matching multimap entry for %s\n",__func__,defIT->first.GetHex());
-                 data = identity.DecodeMultiMapEntry(*defIT);
-                 keyFound = true;
-            }
-            else
-            {
-                continue;
-            }
-        }
-    }
-    if (!keyFound)
-    {
-        it = std::prev(it);
-        nHeight = it->first.blockHeight;
-        hashTx = it->first.txhash;
-        pblockindex = chainActive[nHeight];
-        hashBlock = pblockindex->GetBlockHash();
-        if (GetTransaction(tx.vin[it->first.index].prevout.hash, priorOutTx, hashBlock,true))
-        {
-            if (priorOutTx.vout[tx.vin[it->first.index].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
-                p.IsValid() &&
-                p.evalCode == EVAL_IDENTITY_PRIMARY &&
-                p.vData.size() &&
-                (identity =  CIdentity(p.vData[0])).IsValid())
-            {
-                for (auto defIT = identity.contentMultiMap.begin(); defIT != identity.contentMultiMap.end(); defIT++)
-                {
-                    if (vdxfkey == defIT->first)
-                    {
-                        LogPrintf(">>> (%s) found matching multimap entry for %s, in second loop\n",__func__,defIT->first.GetHex());
-                        data = identity.DecodeMultiMapEntry(*defIT);
-                        keyFound = true;
-                    }
-                    else
-                    {
-                        continue;
-                    }
-                }
-                if (!keyFound)
-                {
-                    // probably impossible given the fact that we are querying index
-                    throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to find matching key in contentmultimap, in indexed vout, or prevout!");
-                }
-            }
+            LogPrintf(">>> (%s) found matching multimap entry for %s\n",__func__,defIT->first.GetHex());
+            data = identity.DecodeMultiMapEntry(*defIT);
         }
         else
         {
-           throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to get transaction for prevout, and no data bound in current id state!");
+            it = std::prev(it);
+            nHeight = it->first.blockHeight;
+            hashTx = it->first.txhash;
+            pblockindex = chainActive[nHeight];
+            hashBlock = pblockindex->GetBlockHash();
+            if (GetTransaction(tx.vin[it->first.index].prevout.hash, priorOutTx, hashBlock,true))
+            {
+                if (priorOutTx.vout[tx.vin[it->first.index].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.IsValid() &&
+                    p.evalCode == EVAL_IDENTITY_PRIMARY &&
+                    p.vData.size() &&
+                    (identity =  CIdentity(p.vData[0])).IsValid())
+                {
+                    defIT = identity.contentMultiMap.find(vdxfkey);
+                    if (defIT != identity.contentMultiMap.end())
+                    {
+                        LogPrintf(">>> (%s) found matching multimap entry for %s, in second loop\n",__func__,defIT->first.GetHex());
+                        data = identity.DecodeMultiMapEntry(*defIT);
+                    }
+                    else
+                    {
+                        // probably impossible given the fact that we are querying index
+                        throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to find matching key in contentmultimap, in indexed vout, or prevout!");
+                    }
+                }
+                else
+                {
+                    throw JSONRPCError(RPC_INTERNAL_ERROR, "Something went wrong when evaluating ID update script in second loop!");
+                }
+            }
+            else
+            {
+                throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to get transaction for prevout, and no data bound in current id state!");
+            }
         }
+    }
+    else
+    {
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Something went wrong when evaluating ID update script!");
     }
 
     result.push_back(Pair("txid", hashTx.GetHex()));
@@ -2542,6 +2536,7 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
     result.push_back(Pair("height", nHeight));
     result.push_back(Pair("indexid", EncodeDestination(CIndexID(conditionid))));
     result.push_back(Pair("data", data));
+
     return result;
 }
 
