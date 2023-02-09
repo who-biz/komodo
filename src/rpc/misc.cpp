@@ -2400,13 +2400,14 @@ UniValue getaddressbalance(const UniValue& params, bool fHelp)
 
 UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() != 2)
+    if (fHelp || params.size() < 2 || params.size() > 3)
         throw runtime_error(
             "getlastmultimapupdate\n"
             "\nReturns the latest update to a given vdxf key for an identity (requires addressindex to be enabled).\n"
             "\nArguments:\n"
             "1. \"identity\" (string) The identity for which we are requesting data\n"
             "2. \"vdxfkey\" (string) identity address of the key which we are requesting\n"
+            "2. minheight (numeric, optional) only return data above this blockchain height\n"
             "\nResult:\n"
             "{\n"
             "  \"txid\"  (string) Transaction hash for the given index entry\n"
@@ -2434,6 +2435,17 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "vdxfkey parameter must be formatted as identity address: \"" + uni_get_str(params[1]) + "\"");
     }
 
+    int64_t minHeight = 0;
+
+    if (params.size() > 2)
+    {
+         minHeight = uni_get_int64(params[2]);
+         if (minHeight > chainActive.Height())
+         {
+             throw JSONRPCError(RPC_INVALID_PARAMETER, "minheight must not be larger than current chain height!");
+         }
+    }
+
     uint160 idID = GetDestinationID(idDest);
     uint160 vdxfkey = GetDestinationID(keyDest);
     LogPrintf(">>> (%s): idID(%s), vdxfkey(%s)(%s)\n",__func__,EncodeDestination(idDest),vdxfkey.GetHex(),EncodeDestination(CIndexID(vdxfkey)));
@@ -2459,7 +2471,7 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
 
     UniValue result(UniValue::VOBJ);
     std::vector<std::pair<CAddressIndexKey,CAmount>>::const_iterator it = std::prev(addressIndex.end());
-    int nHeight = it->first.blockHeight;
+    int64_t nHeight = it->first.blockHeight;
     uint256 hashTx = it->first.txhash;
     CBlockIndex* pblockindex = chainActive[nHeight];
     uint256 hashBlock = pblockindex->GetBlockHash();
@@ -2527,6 +2539,11 @@ UniValue getlastmultimapupdate(const UniValue& params, bool fHelp)
     else
     {
         throw JSONRPCError(RPC_INTERNAL_ERROR, "Something went wrong when evaluating ID update script!");
+    }
+
+    if (nHeight < minHeight)
+    {
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Last multimap update for key falls outside of minheight threshold!");
     }
 
     result.push_back(Pair("txid", hashTx.GetHex()));
