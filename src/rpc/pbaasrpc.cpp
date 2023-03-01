@@ -4691,6 +4691,9 @@ bool find_utxos(const CTxDestination &fromtaddr_, std::vector<COutput> &t_inputs
 
     vector<COutput> vecOutputs;
 
+    uint32_t bp_num = 0;
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //1
+
     pwalletMain->AvailableReserveCoins(vecOutputs,
                                        false,
                                        NULL,
@@ -4700,7 +4703,12 @@ bool find_utxos(const CTxDestination &fromtaddr_, std::vector<COutput> &t_inputs
                                        nullptr,
                                        false);
 
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //2
+    bp_num++;
+    int64_t iteration = 0;
+
     for (COutput& out : vecOutputs)
+    //for (int32_t i = vecOutputs.size(); i >= 0; --i)
     {
         CTxDestination dest;
 
@@ -4750,9 +4758,12 @@ bool find_utxos(const CTxDestination &fromtaddr_, std::vector<COutput> &t_inputs
             {
                 out.fSpendable = true;      // this may not really be spendable, but set it if its the correct ID source and can sign
             }
+
         }
         else
         {
+            LogPrintf(">>> (%s) breakpoint %lu.b, iteration(%lld), OutputAmount(%d)\n", __func__, bp_num, ++iteration, out.tx->vout[out.i].nValue); //5
+
             if (!out.fSpendable)
             {
                 continue;
@@ -4802,10 +4813,13 @@ bool find_utxos(const CTxDestination &fromtaddr_, std::vector<COutput> &t_inputs
         t_inputs_.push_back(out);
     }
 
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //5
     // sort in ascending order, so smaller utxos appear first
     std::sort(t_inputs_.begin(), t_inputs_.end(), [](COutput i, COutput j) -> bool {
         return ( i.tx->vout[i.i].nValue < j.tx->vout[j.i].nValue );
     });
+
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //6
 
     return t_inputs_.size() > 0;
 }
@@ -11859,6 +11873,9 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         returnTx = uni_get_bool(params[1], false);
     }
 
+    uint32_t bp_num = 0;
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //1
+
     uint160 parentID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(params[0], "parent")))));
     if (parentID.IsNull())
     {
@@ -11881,6 +11898,8 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         tokenizedIDControl = uni_get_bool(params[2], false);
     }
 
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //2
+
     if (!(oldID = CIdentity::LookupIdentity(newIDID, 0, &idHeight, &idTxIn, true)).IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + nameStr + " (" +EncodeDestination(CIdentityID(newIDID)) + "), not found ");
@@ -11888,11 +11907,15 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
     uint256 blkHash;
     CTransaction oldIdTx;
+
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //3
+
     if (!myGetTransaction(idTxIn.prevout.hash, oldIdTx, blkHash))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + nameStr + ", transaction not found ");
     }
 
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //4
     auto uniOldID = UniObjectToMap(oldID.ToUniValue());
 
     // always clear the contentmultimap
@@ -11914,6 +11937,8 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
             uniOldID["systemid"] = EncodeDestination(CIdentityID(parentID.IsNull() ? oldID.GetID() : parentID));
         }
     }
+
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //5
 
     UniValue newUniID = MapToUniObject(uniOldID);
     CIdentity newID(newUniID);
@@ -11938,6 +11963,8 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         }
     }
 
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //6
+
     // check fee offer
     CAmount feeOffer = 0;
     if (params.size() > 3)
@@ -11957,6 +11984,8 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     libzcash::SaplingExpandedSpendingKey expsk;
     uint256 sourceOvk;
     bool hasZSource = false;
+
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //7
 
     if (params.size() > 4)
     {
@@ -11996,6 +12025,8 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         wildCardTransparentAddress = true;
     }
 
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //8
+
     // make sure we have a valid revocation and recovery authority defined
     CIdentity revocationAuth = newID.revocationAuthority == newIDID ? newID : newID.LookupIdentity(newID.revocationAuthority);
     CIdentity recoveryAuth = newID.recoveryAuthority == newIDID ? newID : newID.LookupIdentity(newID.recoveryAuthority);
@@ -12004,6 +12035,8 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid revocation or recovery authority without tokenized ID control");
     }
+
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //9
 
     CMutableTransaction txNew = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight + 1);
 
@@ -12037,6 +12070,8 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
                            oldIdTx.vout[idTxIn.prevout.n].nValue);
 
     tb.AddTransparentOutput(newID.IdentityUpdateOutputScript(nHeight + 1), oldIdTx.vout[idTxIn.prevout.n].nValue);
+
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //10
 
     // if we are supposed to get our authority from the token, make sure it is present and prepare to spend it
     // this is handled separately from other currency in and out to ensure no mixing and the ability to use a
@@ -12127,6 +12162,8 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
     CAmount totalFound = 0;
 
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //11
+
     if (hasZSource)
     {
         saplingNotes = find_unspent_notes(zaddressSource);
@@ -12145,11 +12182,13 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
             saplingNotes.erase(saplingNotes.begin() + i + 1, saplingNotes.end());
             success = true;
         }
+        LogPrintf(">>> (%s) breakpoint %lu.a \n",__func__,++bp_num); //12
     }
     else
     {
         success = find_utxos(from_taddress, vCoins) &&
                 pwalletMain->SelectCoinsMinConf(feeOffer, 0, 0, vCoins, setCoinsRet, totalFound);
+        LogPrintf(">>> (%s) breakpoint %lu.b \n",__func__,++bp_num); //12
     }
 
     // aggregate all inputs into one output with only the offer coins and offer indexes
@@ -12173,6 +12212,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         {
             tb.AddSaplingSpend(expsk, saplingNotes[i].note, anchor, witnesses[i].get());
         }
+        LogPrintf(">>> (%s) breakpoint %lu.a \n",__func__,++bp_num); //13a
     }
     else
     {
@@ -12182,6 +12222,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
                                     oneInput.first->vout[oneInput.second].scriptPubKey,
                                     oneInput.first->vout[oneInput.second].nValue);
         }
+        LogPrintf(">>> (%s) breakpoint %lu.b \n",__func__,++bp_num); //13b
     }
 
     if (totalFound > feeOffer)
@@ -12236,6 +12277,8 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         }
     }
 
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //14
+
     tb.SetFee(feeOffer);
 
     TransactionBuilderResult preResult = tb.Build(true);
@@ -12268,6 +12311,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         }
     }
 
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //15
     // including definitions and claims thread
     return UniValue(commitTx.GetHash().GetHex());
 }

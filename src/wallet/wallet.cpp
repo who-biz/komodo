@@ -5620,6 +5620,10 @@ static void ApproximateBestReserveSubset(vector<pair<CCurrencyValueMap, pair<con
 
 bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, int nConfMine, int nConfTheirs, vector<COutput> vCoins,set<pair<const CWalletTx*,unsigned int> >& setCoinsRet, CAmount& nValueRet) const
 {
+
+    uint32_t bp_num = 0;
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //1
+
     int32_t count = 0; //uint64_t lowest_interest = 0;
     setCoinsRet.clear();
     //memset(interests,0,sizeof(interests));
@@ -5683,6 +5687,7 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, int nConfMine, int
             //    lowest_interest = pcoin->vout[i].interest;
         }
     }
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //2
 
     if (nTotalLower == nTargetValue)
     {
@@ -5693,12 +5698,14 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, int nConfMine, int
             //if ( KOMODO_EXCHANGEWALLET == 0 && i < count )
             //    *interestp += interests[i];
         }
+        LogPrintf(">>> (%s) breakpoint %lu.a \n",__func__,++bp_num); //3a
         return true;
     }
 
     if (nTotalLower < nTargetValue)
     {
-        if (coinLowestLarger.second.first == NULL)
+       LogPrintf(">>> (%s) breakpoint %lu.b \n",__func__,++bp_num); //3b
+       if (coinLowestLarger.second.first == NULL)
             return false;
         setCoinsRet.insert(coinLowestLarger.second);
         nValueRet += coinLowestLarger.first;
@@ -5711,6 +5718,8 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, int nConfMine, int
     sort(vValue.rbegin(), vValue.rend(), CompareValueOnly());
     vector<char> vfBest;
     CAmount nBest;
+
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //4
 
     ApproximateBestSubset(vValue, nTotalLower, nTargetValue, vfBest, nBest, 1000);
     if (nBest != nTargetValue && nTotalLower >= nTargetValue + CENT)
@@ -5742,6 +5751,7 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, int nConfMine, int
                 LogPrint("selectcoins", "%s", FormatMoney(vValue[i].first));
         LogPrint("selectcoins", "total %s\n", FormatMoney(nBest));
     }
+    LogPrintf(">>> (%s) breakpoint %lu \n",__func__,++bp_num); //5
 
     return true;
 }
