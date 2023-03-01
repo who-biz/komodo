@@ -243,6 +243,7 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
         if (height != 0 && (*pHeightOut > height || (height == 1 && *pHeightOut == height)))
         {
             *pHeightOut = 0;
+            ret = CIdentity();
 
             // if we must check up to a specific height that is less than the latest height, do so
             std::vector<CAddressIndexDbEntry> addressIndex, addressIndex2;
@@ -268,7 +269,7 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
                     COptCCParams p;
                     LOCK(mempool.cs);
                     if (!addressIndex[i].first.spending &&
-                        addressIndex[i].first.txindex > txIndex &&    // always select the latest in a block, if there can be more than one
+                        (addressIndex[i].first.blockHeight == 1 || addressIndex[i].first.txindex > txIndex) &&    // always select the latest in a block, if there can be more than one
                         myGetTransaction(addressIndex[i].first.txhash, idTx, blkHash) &&
                         idTx.vout[addressIndex[i].first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
                         p.IsValid() &&
@@ -290,6 +291,103 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
         }
     }
     return ret;
+}
+
+std::vector<std::tuple<CIdentity, uint256, uint32_t, CUTXORef, CPartialTransactionProof>>
+CIdentity::LookupIdentities(const CIdentityID &nameID, uint32_t gteHeight, uint32_t lteHeight, bool checkMempool, bool getProofs, uint32_t proofHeight)
+{
+    // if we don't have an endHeight, we also check the mempool
+    if (!lteHeight || lteHeight == -1)
+    {
+        lteHeight = chainActive.Height();
+    }
+
+    std::vector<std::tuple<CIdentity, uint256, uint32_t, CUTXORef, CPartialTransactionProof>> retVal;
+    std::vector<CAddressIndexDbEntry> identityIndex;
+    std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> mempoolIdentities;
+
+    uint160 indexKey(CCrossChainRPCData::GetConditionID(nameID, EVAL_IDENTITY_PRIMARY));
+
+    LOCK(mempool.cs);
+
+    if (checkMempool)
+    {
+        mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{indexKey, CScript::P2IDX}}), mempoolIdentities);
+    }
+
+    // order from first that spends unknown to last that has no spender
+    std::map<COutPoint, uint256> spentOutputs;
+    mempoolIdentities = mempool.FilterAddressDeltas(mempoolIdentities, spentOutputs);
+
+    if (GetAddressIndex(indexKey, CScript::P2IDX, identityIndex, gteHeight, lteHeight) &&
+        (identityIndex.size() || mempoolIdentities.size()))
+    {
+        std::vector<int> toRemove;
+        std::map<COutPoint, int> outputMap;
+        for (int i = 0; i < identityIndex.size(); i++)
+        {
+            if (!identityIndex[i].first.spending)
+            {
+                CTransaction identityTx;
+                CIdentity identity;
+                uint256 blkHash;
+                COptCCParams fP;
+                BlockMap::iterator oneBlockIt;
+                if (!myGetTransaction(identityIndex[i].first.txhash, identityTx, blkHash) ||
+                    (oneBlockIt = mapBlockIndex.find(blkHash)) == mapBlockIndex.end() ||
+                    !chainActive.Contains(oneBlockIt->second) ||
+                    identityIndex[i].first.index >= identityTx.vout.size() ||
+                    !(identityTx.vout[identityIndex[i].first.index].scriptPubKey.IsPayToCryptoCondition(fP) &&
+                        fP.IsValid() &&
+                        fP.evalCode == EVAL_IDENTITY_PRIMARY &&
+                        fP.vData.size() &&
+                        (identity = CIdentity(fP.vData[0])).IsValid()))
+                {
+                    LogPrintf("Invalid identity transaction %s:\n", identityIndex[i].first.txhash.GetHex().c_str());
+                    printf("Invalid identity transaction %s:\n", identityIndex[i].first.txhash.GetHex().c_str());
+                    return retVal;
+                }
+                retVal.push_back({identity,
+                                  oneBlockIt->first,
+                                  oneBlockIt->second->GetHeight(),
+                                  CUTXORef(identityIndex[i].first.txhash, identityIndex[i].first.index),
+                                  getProofs ?
+                                    CPartialTransactionProof(identityTx,
+                                                            std::vector<int>(),
+                                                            std::vector<int>({(int)identityIndex[i].first.index}),
+                                                            oneBlockIt->second,
+                                                            proofHeight) :
+                                    CPartialTransactionProof()});
+            }
+        }
+        for (int i = 0; i < mempoolIdentities.size(); i++)
+        {
+            CTransaction identityTx;
+            if (mempool.lookup(mempoolIdentities[i].first.txhash, identityTx))
+            {
+                CTransaction identityTx;
+                CIdentity identity;
+                COptCCParams fP;
+                if (mempoolIdentities[i].first.index >= identityTx.vout.size() ||
+                    !(identityTx.vout[mempoolIdentities[i].first.index].scriptPubKey.IsPayToCryptoCondition(fP) &&
+                        fP.IsValid() &&
+                        fP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                        fP.vData.size() &&
+                        (identity = CIdentity(fP.vData[0])).IsValid()))
+                {
+                    LogPrintf("Invalid identity transaction from mempool %s:\n", mempoolIdentities[i].first.txhash.GetHex().c_str());
+                    printf("Invalid identity transaction from mempool %s:\n", mempoolIdentities[i].first.txhash.GetHex().c_str());
+                    return retVal;
+                }
+                retVal.push_back({identity,
+                                  uint256(),
+                                  0,
+                                  CUTXORef(mempoolIdentities[i].first.txhash, mempoolIdentities[i].first.index),
+                                  CPartialTransactionProof()});
+            }
+        }
+    }
+    return retVal;
 }
 
 CIdentity CIdentity::LookupIdentity(const std::string &name, uint32_t height, uint32_t *pHeightOut, CTxIn *idTxIn)
@@ -884,7 +982,8 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
         if (issuingCurrency.IsFractional())
         {
             feePricingCurrency = issuingCurrency.FeePricingCurrency();
-            if (!(pricingState = ConnectedChains.GetCurrencyState(issuerID, (tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) - 1, false)).IsValid() ||
+            if ((tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) > height ||
+                !(pricingState = ConnectedChains.GetCurrencyState(issuerID, (tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) - 1, false)).IsValid() ||
                 !pricingState.IsLaunchConfirmed())
             {
                 return state.Error("Invalid currency state for gateway converter to register identity");
@@ -1404,7 +1503,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     }
 }
 
-bool GetNotarizationData(const uint160 &chainID, CChainNotarizationData &notarizationData, std::vector<std::pair<CTransaction, uint256>> *optionalTxOut = NULL);
+bool GetNotarizationData(const uint160 &chainID, CChainNotarizationData &notarizationData, std::vector<std::pair<CTransaction, uint256>> *optionalTxOut=nullptr, std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>> *pCounterEvidence=nullptr);
 
 bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
@@ -1510,6 +1609,11 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
         // always use default expiry
         int32_t reserveIndex = issuingCurrency.GetCurrenciesMap().find(feePricingCurrency)->second;
         std::vector<std::pair<CTransaction, uint256>> txOut;
+
+        if ((tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) > height)
+        {
+            return state.Error("Identity transaction must have at least " + std::to_string(DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) + " blocks for transaction expiry");
+        }
 
         pricingState = ConnectedChains.GetCurrencyState(issuerID, (tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) - 1, false);
 
@@ -1722,14 +1826,22 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
         uint256 hashBlk;
         for (auto &oneTxIn : tx.vin)
         {
-            CTransaction sourceTx = txMap[oneTxIn.prevout.hash];
-            if (sourceTx.nVersion <= sourceTx.SPROUT_MIN_CURRENT_VERSION && !myGetTransaction(oneTxIn.prevout.hash, sourceTx, hashBlk))
+            CTransaction sourceTx;
+            auto sourceTxIt = txMap.find(oneTxIn.prevout.hash);
+            if (sourceTxIt == txMap.end() && !myGetTransaction(oneTxIn.prevout.hash, sourceTx, hashBlk))
             {
                 //LogPrintf("Cannot access input from output %u of transaction %s in transaction %s\n", oneTxIn.prevout.n, oneTxIn.prevout.hash.GetHex().c_str(), tx.GetHash().GetHex().c_str());
                 //printf("Cannot access input from output %u of transaction %s in transaction %s\n", oneTxIn.prevout.n, oneTxIn.prevout.hash.GetHex().c_str(), tx.GetHash().GetHex().c_str());
                 return state.Error("Cannot access input");
             }
-            txMap[oneTxIn.prevout.hash] = sourceTx;
+            else if (sourceTxIt != txMap.end())
+            {
+                sourceTx = sourceTxIt->second;
+            }
+            else
+            {
+                txMap[oneTxIn.prevout.hash] = sourceTx;
+            }
 
             if (oneTxIn.prevout.n >= sourceTx.vout.size())
             {
@@ -1749,6 +1861,14 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             {
                 idx = oneTxIn.prevout.n;
                 ::FromVector(p.vData[0], ch);
+
+                BlockMap::iterator commitmentBlkIt;
+                if (hashBlk.IsNull() ||
+                    (commitmentBlkIt = mapBlockIndex.find(hashBlk)) == mapBlockIndex.end() ||
+                    !chainActive.Contains(commitmentBlkIt->second))
+                {
+                    return state.Error("Invalid commitment reference");
+                }
             }
         }
     }
@@ -1901,7 +2021,6 @@ bool PrecheckIdentityCommitment(const CTransaction &tx, int32_t outNum, CValidat
                                 numIndexKeys++;
                                 uint160 destID = GetDestinationID(oneKey);
 
-                                // TODO: HARDENING - check any currency against itself as we do native
                                 if (destID == nativeCurrencyOffer)
                                 {
                                     hasNativeOffer = true;
@@ -2338,14 +2457,21 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         }
     }
 
-    // TODO: HARDENING at block one, a new PBaaS chain can mint IDs, but only those on its own chain or imported from its launch chain
-    // imported IDs must come from a system that can import the ID in question
+    // TODO: HARDENING - ensure that the block one coinbase only mints the IDs it is supposed to mint
+    // this may be a redundant note and may be removed when block one coinbase is fully checked
     if (isPBaaS)
     {
         if (height == 1)
         {
             // for block one IDs, ensure they are valid as per the launch parameters
-            return true;
+            if (tx.IsCoinBase())
+            {
+                return true;
+            }
+            else
+            {
+                return state.Error("Invalid ID minting in block 1");
+            }
         }
         else if (validCrossChainImport)
         {
@@ -2911,11 +3037,11 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
                 issuingCurrency = ConnectedChains.ThisChain();
             }
             bool success = ValidateSpendingIdentityReservation(spendingTx, outputNum, eval->state, height, issuingCurrency);
-            if (!success)
+            if (!success && LogAcceptCategory("identity"))
             {
                 UniValue jsonTx;
                 TxToUniv(spendingTx, uint256(), jsonTx);
-                printf("%s: failed to validate identity reservation:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+                LogPrintf("%s: failed to validate identity reservation:\n%s\n", __func__, jsonTx.write(1,2).c_str());
             }
             return success;
         }
@@ -2923,6 +3049,7 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
     else
     {
         printf("%s: error getting transaction %s to spend\n", __func__, spendingTx.vin[nIn].prevout.hash.GetHex().c_str());
+        LogPrintf("%s: error getting transaction %s to spend\n", __func__, spendingTx.vin[nIn].prevout.hash.GetHex().c_str());
         return false;
     }
 
