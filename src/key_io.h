@@ -18,6 +18,8 @@
 
 extern CIdentityID VERUS_DEFAULTID;
 extern CIdentityID VERUS_NOTARYID;
+extern CIdentityID PBAAS_NOTIFICATION_ORACLE;
+extern std::string PBAAS_DEFAULT_NOTIFICATION_ORACLE;
 extern uint160 VERUS_NODEID;
 extern int32_t MAX_UTXOS_ID_RESCAN;
 extern int32_t MAX_OUR_UTXOS_ID_RESCAN;
@@ -42,6 +44,7 @@ CTxDestination DecodeDestination(const std::string& str);
 CTxDestination ValidateDestination(const std::string &destStr);
 bool IsValidDestinationString(const std::string& str);
 bool IsValidDestinationString(const std::string& str, const CChainParams& params);
+uint160 ParseVDXFKey(const std::string &keyString);
 
 std::string EncodePaymentAddress(const libzcash::PaymentAddress& zaddr);
 libzcash::PaymentAddress DecodePaymentAddress(const std::string& str);

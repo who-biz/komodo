@@ -764,7 +764,7 @@ bool CPBaaSNotarization::SetMirror(bool setTrue)
         currencyStates.count(currencyID) ||
         !(proofRoots.begin()->first == ASSETCHAINS_CHAINID || (++proofRoots.begin())->first == ASSETCHAINS_CHAINID))
     {
-        LogPrintf("%s: invalid earned notarization for acceptance\n", __func__);
+        LogPrint("notarization", "%s: invalid earned notarization for acceptance\n", __func__);
         return false;
     }
 
@@ -773,7 +773,7 @@ bool CPBaaSNotarization::SetMirror(bool setTrue)
 
     if (currencyID != ASSETCHAINS_CHAINID && !currencyStates.count(ASSETCHAINS_CHAINID))
     {
-        LogPrintf("%s: notarization for acceptance must include both currency states\n", __func__);
+        LogPrint("notarization", "%s: notarization for acceptance must include both currency states\n", __func__);
         return false;
     }
 
@@ -806,6 +806,7 @@ bool CPBaaSNotarization::SetMirror(bool setTrue)
     else
     {
         flags &= ~FLAG_ACCEPTED_MIRROR;
+        proposer.ClearAuxDests();
     }
     return true;
 }
@@ -1143,14 +1144,14 @@ CUTXORef::CUTXORef(const UniValue &uni)
 UniValue CObjectFinalization::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
-    ret.push_back(Pair("finalizationtype", (FinalizationType() == FINALIZE_NOTARIZATION) ?
-                                                "finalizenotarization" : FinalizationType() == FINALIZE_EXPORT ?
-                                                "finalizeexport" : "invalid"));
+    ret.push_back(Pair("finalizationtype", finalizationType));
     ret.push_back(Pair("status", IsConfirmed() ?
                                     "confirmed" :
                                     IsRejected() ?
                                         "rejected" :
-                                        "pending"));
+                                        IsChallenge() ?
+                                            "challenge" :
+                                            "pending"));
     if (evidenceInputs.size())
     {
         UniValue inputsUni(UniValue::VARR);

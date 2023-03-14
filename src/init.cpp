@@ -386,6 +386,8 @@ std::string HelpMessage(HelpMessageMode mode)
     strUsage += HelpMessageOpt("-addressindex", strprintf(_("Maintain a full address index, used to query for the balance, txids and unspent outputs for addresses (default: %u)"), DEFAULT_ADDRESSINDEX));
     strUsage += HelpMessageOpt("-timestampindex", strprintf(_("Maintain a timestamp index for block hashes, used to query blocks hashes by a range of timestamps (default: %u)"), DEFAULT_TIMESTAMPINDEX));
     strUsage += HelpMessageOpt("-spentindex", strprintf(_("Maintain a full spent index, used to query the spending txid and input index for an outpoint (default: %u)"), DEFAULT_SPENTINDEX));
+    strUsage += HelpMessageOpt("-alwayssubmitnotarizations", strprintf(_("Submit notarizations to notary chain whenevever merge mining/staking and eligible (default = false, only as needed)"), DEFAULT_SPENTINDEX));
+    strUsage += HelpMessageOpt("-allowdelayednotarizations", strprintf(_("Do not notarize in order to prevent slower notarizations (default = false, notarize to prevent slowing down)"), DEFAULT_SPENTINDEX));
     strUsage += HelpMessageGroup(_("Connection options:"));
     strUsage += HelpMessageOpt("-addnode=<ip>", _("Add a node to connect to and attempt to keep the connection open"));
     strUsage += HelpMessageOpt("-banscore=<n>", strprintf(_("Threshold for disconnecting misbehaving peers (default: %u)"), 100));
@@ -511,10 +513,13 @@ std::string HelpMessage(HelpMessageMode mode)
         strUsage += HelpMessageOpt("-regtest", "Enter regression test mode, which uses a special chain in which blocks can be solved instantly. "
             "This is intended for regression testing tools and app development.");
     }
+
     // strUsage += HelpMessageOpt("-shrinkdebugfile", _("Shrink debug.log file on client startup (default: 1 when no -debug)"));
     strUsage += HelpMessageOpt("-mineraddress=<address>", _("Mining rewards will go to this address"));
     strUsage += HelpMessageOpt("-pubkey=<hexpubkey>", _("If set, mining and staking rewards will go to this address by default"));
     strUsage += HelpMessageOpt("-defaultid=<i-address>", _("VerusID used for default change out and staking reward recipient"));
+    strUsage += HelpMessageOpt("-notaryid=<i-address>", _("VerusID used for PBaaS and Ethereum cross-chain notarization"));
+    strUsage += HelpMessageOpt("-notificationoracle=<i-address>", strprintf(_("VerusID monitored for network alerts, triggers, and signals. Current default is \"%s\" for Verus and the chain ID for PBaaS chains"), PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str()));
     strUsage += HelpMessageOpt("-defaultzaddr=<sapling-address>", _("sapling address to receive fraud proof rewards and if used with \"-privatechange=1\", z-change address for the sendcurrency command"));
     strUsage += HelpMessageOpt("-cheatcatcher=<sapling-address>", _("same as \"-defaultzaddr\""));
     strUsage += HelpMessageOpt("-privatechange", _("directs all change from sendcurency or z_sendmany APIs to the defaultzaddr set, if it is a valid sapling address"));
@@ -524,6 +529,7 @@ std::string HelpMessage(HelpMessageMode mode)
     strUsage += HelpMessageOpt("-blocktime=<n>", strprintf(_("Set target block time (in seconds) for difficulty adjustment (default: %d)"), CCurrencyDefinition::DEFAULT_BLOCKTIME_TARGET));
     strUsage += HelpMessageOpt("-powaveragingwindow=<n>", strprintf(_("Set averaging window for PoW difficulty adjustment, in blocks (default: %d)"), CCurrencyDefinition::DEFAULT_AVERAGING_WINDOW));
     strUsage += HelpMessageOpt("-notarizationperiod=<n>", strprintf(_("Set minimum spacing consensus between cross-chain notarization, in blocks (default: %d, min 10 min)"), CCurrencyDefinition::BLOCK_NOTARIZATION_MODULO));
+    strUsage += HelpMessageOpt("-alwayssubmitnotarizations=<bool>", strprintf(_("Always submit cross-chain notarizations when allowed, even when not necessary (default: false)")));
     strUsage += HelpMessageOpt("-testnet", _("loads PBaaS network in testmode"));
 
     strUsage += HelpMessageGroup(_("Node relay options:"));
@@ -1277,6 +1283,8 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     MAX_UTXOS_ID_RESCAN = GetArg("-maxutxosidrescan", std::min(MAX_UTXOS_ID_RESCAN, MAX_OUR_UTXOS_ID_RESCAN));
 
     // get default IDs and addresses
+    auto chainUpgradeOracle = DecodeDestination(GetArg("-notificationoracle", IsVerusActive() ? PBAAS_DEFAULT_NOTIFICATION_ORACLE : EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
+    PBAAS_NOTIFICATION_ORACLE = chainUpgradeOracle.which() == COptCCParams::ADDRTYPE_ID ? CIdentityID(GetDestinationID(chainUpgradeOracle)) : CIdentityID();
     auto notaryIDDest = DecodeDestination(GetArg("-notaryid", ""));
     VERUS_NOTARYID = notaryIDDest.which() == COptCCParams::ADDRTYPE_ID ? CIdentityID(GetDestinationID(notaryIDDest)) : CIdentityID();
     auto defaultIDDest = DecodeDestination(GetArg("-defaultid", VERUS_NOTARYID.IsNull() ? "" : EncodeDestination(notaryIDDest)));
@@ -1858,6 +1866,8 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
                     // ETH bridge defined
                     ConnectedChains.ConfigureEthBridge(true);
                 }
+
+                ConnectedChains.CheckOracleUpgrades();
 
                 CChainNotarizationData cnd;
                 if (ConnectedChains.FirstNotaryChain().IsValid())
