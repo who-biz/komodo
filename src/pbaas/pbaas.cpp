@@ -4222,12 +4222,12 @@ void CConnectedChains::CheckOracleUpgrades()
         upgradeData.resize(upgradeData.size() + 1);
         std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[TestForkUpgradeKey()].GetHex());
     }
-    else if (oracleID.contentMap.count(PBaaSUpgradeKey()))
+    if (oracleID.contentMap.count(PBaaSUpgradeKey()))
     {
         upgradeData.resize(upgradeData.size() + 1);
         std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[PBaaSUpgradeKey()].GetHex());
     }
-    else if (oracleID.contentMap.count(OptionalPBaaSUpgradeKey()))
+    if (oracleID.contentMap.count(OptionalPBaaSUpgradeKey()))
     {
         upgradeData.resize(upgradeData.size() + 1);
         std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[OptionalPBaaSUpgradeKey()].GetHex());
@@ -4247,6 +4247,7 @@ void CConnectedChains::CheckOracleUpgrades()
         }
     }
 
+    auto upgradeTestNetEthContractIt = activeUpgradesByKey.find(TestForkUpgradeKey());
     auto upgradeTestForkIt = activeUpgradesByKey.find(TestForkUpgradeKey());
     auto upgradePBaaSIt = activeUpgradesByKey.find(PBaaSUpgradeKey());
 
@@ -5019,18 +5020,27 @@ bool CConnectedChains::GetUnspentByIndex(const uint160 &indexID, std::vector<std
     std::set<COutPoint> spentInMempool;
     auto memPoolOuts = mempool.FilterUnspent(unconfirmedUTXOs, spentInMempool);
 
+    LRUCache<uint256, std::pair<CTransaction, uint256>> txesBeingSpent(50, 0.3);
+
     for (auto &oneConfirmed : confirmedUTXOs)
     {
         BlockMap::iterator blockIt;
-        uint256 blockHash;
-        CTransaction tx;
+        std::pair<CTransaction, uint256> txAndBlkHash;
+        bool fromCache = false;
+        bool fromChain = false;
         if (spentInMempool.count(COutPoint(oneConfirmed.first.txhash, oneConfirmed.first.index)) ||
-            !myGetTransaction(oneConfirmed.first.txhash, tx, blockHash) ||
-            (blockIt = mapBlockIndex.find(blockHash)) == mapBlockIndex.end() ||
+            (!(fromCache = txesBeingSpent.Get(oneConfirmed.first.txhash, txAndBlkHash)) &&
+             !(fromChain = myGetTransaction(oneConfirmed.first.txhash, txAndBlkHash.first, txAndBlkHash.second))) ||
+            (blockIt = mapBlockIndex.find(txAndBlkHash.second)) == mapBlockIndex.end() ||
             !chainActive.Contains(blockIt->second))
         {
+            if (fromChain)
+            {
+                txesBeingSpent.Put(oneConfirmed.first.txhash, txAndBlkHash);
+            }
             continue;
         }
+        txesBeingSpent.Put(oneConfirmed.first.txhash, txAndBlkHash);
         oneConfirmed.second.blockHeight = blockIt->second->GetHeight();
 
         COptCCParams p;
