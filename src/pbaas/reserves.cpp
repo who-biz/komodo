@@ -332,7 +332,8 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                                       int32_t &evidenceOutStart,
                                       int32_t &evidenceOutEnd,
                                       std::vector<CReserveTransfer> &reserveTransfers,
-                                      CValidationState &state) const
+                                      CValidationState &state,
+                                      bool deepCheck) const
 {
     // we can assume that to get here, we have decoded the first output, which is the import output
     // specified in numImportOut, our "this" pointer
@@ -587,49 +588,30 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                     if (transactionProof.evidence.chainObjects.size() &&
                         ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.IsChainProof())
                     {
-                        CMMRProof &EthProof = ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.txProof;
-                        if (importFromDef.nativeCurrencyID.AuxDestCount() == 0)
+                        if (deepCheck)
                         {
-                            if (IsVerusActive() &&
-                                !IsVerusMainnetActive())
+                            CMMRProof &EthProof = ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.txProof;
+                            if (importFromDef.nativeCurrencyID.AuxDestCount() == 0)
                             {
-                                static std::vector<unsigned char> convertedEthDest = ::AsVector(CTransferDestination::DecodeEthDestination("0x3fa3a60240ef59460f5b34e2ec5a06ab892a2d00"));
-                                static CTransferDestination ethTestBridgeContract(CTransferDestination::DEST_ETH, convertedEthDest);
-                                // TODO: HARDENING & VNEXT retroactively hardcoded first testnet contract address, remove and ensure currency
-                                // definition is correct for vETH gateway on next testnet
-                                // until then, we enable testnet rerouting of currency address via oracle for last upgrade to need that
-                                // remove contract upgrade code before mainnet release and bind to then current testnet
-                                //
-                                // check for a specific oracle upgrade
-                                if (!PBAAS_NOTIFICATION_ORACLE.IsNull() &&
-                                    ethTestBridgeContract.destination == convertedEthDest)
+                                if (IsVerusActive() &&
+                                    !IsVerusMainnetActive())
                                 {
-                                    CIdentity oracleID = CIdentity::LookupIdentity(PBAAS_NOTIFICATION_ORACLE, nHeight);
-                                    CUpgradeDescriptor contractUpgradeDescr;
-
-                                    if (oracleID.contentMap.count(CConnectedChains::TestnetEthContractUpgradeKey()))
-                                    {
-                                        contractUpgradeDescr = ParseHex(oracleID.contentMap[CConnectedChains::TestnetEthContractUpgradeKey()].GetHex());
-                                        ethTestBridgeContract = CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(contractUpgradeDescr.upgradeID));
-                                        LogPrintf("Upgrading testnet Ethereum bridge contract reference to %s\n", ethTestBridgeContract.EncodeEthDestination(contractUpgradeDescr.upgradeID).c_str());
-                                    }
+                                    importFromDef.nativeCurrencyID.SetAuxDest(
+                                        CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(CTransferDestination::DecodeEthDestination(PBAAS_TEST_ETH_CONTRACT))),
+                                        0);
                                 }
-
-                                importFromDef.nativeCurrencyID.SetAuxDest(
-                                    CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(CTransferDestination::DecodeEthDestination("0x3fa3a60240ef59460f5b34e2ec5a06ab892a2d00"))),
-                                    0);
+                                else
+                                {
+                                    return state.Error(strprintf("%s: missing contract address in currency definition", __func__));
+                                }
                             }
-                            else
+                            if (uint160(importFromDef.nativeCurrencyID.GetAuxDest(0).destination) != EthProof.GetNativeAddress())
                             {
-                                return state.Error(strprintf("%s: missing contract address in currency definition", __func__));
+                                LogPrintf("%s: Invalid ETH storage address, Found: %s in AuxDest, got %s from proof", __func__,
+                                CTransferDestination::EncodeEthDestination(uint160(importFromDef.nativeCurrencyID.GetAuxDest(0).destination)),
+                                CTransferDestination::EncodeEthDestination(EthProof.GetNativeAddress()));
+                                return state.Error(strprintf("%s: invalid ETH storage address", __func__));
                             }
-                        }
-                        if (uint160(importFromDef.nativeCurrencyID.GetAuxDest(0).destination) != EthProof.GetNativeAddress())
-                        {
-                            LogPrintf("%s: Invalid ETH storage address, Found: %s in AuxDest, got %s from proof", __func__,
-                            CTransferDestination::EncodeEthDestination(uint160(importFromDef.nativeCurrencyID.GetAuxDest(0).destination)),
-                            CTransferDestination::EncodeEthDestination(EthProof.GetNativeAddress()));
-                            return state.Error(strprintf("%s: invalid ETH storage address", __func__));
                         }
                     }
                     else
@@ -1498,7 +1480,8 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                                     int32_t &importNotarizationOut,
                                     int32_t &evidenceOutStart,
                                     int32_t &evidenceOutEnd,
-                                    std::vector<CReserveTransfer> &reserveTransfers) const
+                                    std::vector<CReserveTransfer> &reserveTransfers,
+                                    bool deepCheck) const
 {
     CValidationState state;
     return GetImportInfo(importTx,

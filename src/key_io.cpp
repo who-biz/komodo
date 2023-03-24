@@ -32,6 +32,7 @@ std::string PBAAS_DEFAULT_NOTIFICATION_ORACLE = "Verus Coin Foundation@";
 
 int32_t MAX_OUR_UTXOS_ID_RESCAN = 1000; // this can be set with "-maxourutxosidrescan=n"
 int32_t MAX_UTXOS_ID_RESCAN = 100;      // this can be set with "-maxutxosidrescan=n"
+bool ONLY_ADD_WHITELISTED_UTXOS_ID_RESCAN = false;
 uint160 VERUS_NODEID;
 bool VERUS_PRIVATECHANGE;
 std::string VERUS_DEFAULT_ZADDR;
@@ -119,6 +120,12 @@ UniValue getvdxfid_internal(const UniValue& params)
     {
         cleanName = CleanName(vdxfName, parentID);
         vdxfID = GetDestinationID(idDest);
+    }
+    else if (vdxfName.substr(0,2) == "0x" && !(vdxfID = CTransferDestination::DecodeEthDestination(vdxfName)).IsNull())
+    {
+        parentIDName = "currencyaddresstype";
+        parentID = CIdentity::GetID("veth", parentID);
+        cleanName = vdxfName;
     }
     else
     {

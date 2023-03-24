@@ -1431,7 +1431,7 @@ bool ContextualCheckTransaction(
                 if (isPBaaS &&
                     (!IsVerusActive() ||
                      IsVerusMainnetActive() ||
-                     chainActive[std::min((uint32_t)chainActive.Height(), (uint32_t)nHeight)]->nTime > PBAAS_TESTFORK_TIME) &&
+                     chainActive[std::min((uint32_t)chainActive.Height(), (uint32_t)nHeight)]->nTime > PBAAS_PREMAINNET_ACTIVATION) &&
                     p.AsVector().size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE)
                 {
                     if (LogAcceptCategory("notarization"))
@@ -4359,8 +4359,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 cci.importCurrencyID == cbCurID &&
                                 (cbCurID == ASSETCHAINS_CHAINID || cbCurID == ConnectedChains.ThisChain().GatewayConverterID()) &&
                                 cci.GetImportInfo(tx, 1, j, ccx,
-                                                dummySysCCI, sysCCIOut,
-                                                importNotarization, notarizationOut, evidenceStart, evidenceEnd, reserveTransfers, state) &&
+                                                  dummySysCCI, sysCCIOut,
+                                                  importNotarization, notarizationOut, evidenceStart, evidenceEnd, reserveTransfers, state) &&
                                 importNotarization.IsValid() &&
                                 importNotarization.currencyState.IsValid())
                             {
