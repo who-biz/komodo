@@ -1913,27 +1913,32 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                     }
                     // make sure prev block hash and block height are correct
                     CStakeParams p;
-                    if (validHash && (validHash = GetStakeParams(pblock->vtx[txn_count-1], p)))
+                    if (validHash &&
+                        (validHash = GetStakeParams(pblock->vtx[txn_count-1], p) &&
+                                     p.prevHash == pblock->hashPrevBlock &&
+                                     (int32_t)p.blkHeight == height))
                     {
                         for (int i = 0; validHash && i < pblock->vtx[0].vout.size(); i++)
                         {
                             validHash = false;
+                            CCurrencyValueMap reserveOutVal;
                             if (pblock->vtx[0].vout[i].scriptPubKey.IsInstantSpendOrUnspendable() ||
-                                (!pblock->vtx[0].vout[i].nValue && pblock->vtx[0].vout[i].ReserveOutValue() == CCurrencyValueMap()) ||
+                                (!pblock->vtx[0].vout[i].nValue &&
+                                 (((reserveOutVal = pblock->vtx[0].vout[i].ReserveOutValue()) == CCurrencyValueMap()) ||
+                                  (isPBaaS &&
+                                   !IsVerusActive() &&
+                                   reserveOutVal.valueMap.size() == 1 &&
+                                   reserveOutVal.valueMap.count(VERUS_CHAINID)))) ||
                                 ValidateMatchingStake(pblock->vtx[0], i, pblock->vtx[txn_count-1], validHash, slowflag) && !validHash)
                             {
-                                if ((p.prevHash == pblock->hashPrevBlock) && (int32_t)p.blkHeight == height)
-                                {
-                                    validHash = true;
-                                }
-                                else
-                                {
-                                    printf("ERROR: invalid block data for stake tx\nblkHash:   %s\ntxBlkHash: %s\nblkHeight: %d, txBlkHeight: %d\n",
-                                            pblock->hashPrevBlock.GetHex().c_str(), p.prevHash.GetHex().c_str(), height, p.blkHeight);
-                                    validHash = false;
-                                }
+                                validHash = true;
                             }
-                            else validHash = false;
+                            else
+                            {
+                                printf("ERROR: invalid block data for stake tx\nblkHash:   %s\ntxBlkHash: %s\nblkHeight: %d, txBlkHeight: %d\n",
+                                        pblock->hashPrevBlock.GetHex().c_str(), p.prevHash.GetHex().c_str(), height, p.blkHeight);
+                                validHash = false;
+                            }
                         }
                     }
                 }
@@ -2055,7 +2060,6 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                                     if (extendedStake)
                                     {
                                         std::vector<CTxDestination> prevDests;
-                                        std::map<CTxDestination, CCurrencyValueMap> cbOutputs;
                                         txnouttype cbType;
                                         int numRequired;
                                         uint160 reserveDepositCurrencyID;
@@ -2092,11 +2096,25 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                                             {
                                                 if (isPBaaS)
                                                 {
-                                                    if (!(oneOut.nValue >= 0 &&
-                                                          p.evalCode == EVAL_STAKEGUARD))
+                                                    if ((IsVerusActive() && !(oneOut.nValue >= 0 && p.evalCode == EVAL_STAKEGUARD)) ||
+                                                        ((!PBAAS_TESTMODE ||
+                                                          pblock->nTime > PBAAS_TESTFORK3_TIME) &&
+                                                          !IsVerusActive() &&
+                                                          ((oneOut.nValue > 0 && p.evalCode != EVAL_STAKEGUARD) || (oneOut.nValue == 0 && p.evalCode != EVAL_RESERVE_OUTPUT))))
                                                     {
                                                         printf("ERROR: in staking block %s - invalid coinbase output 1\n", blkHash.ToString().c_str());
                                                         LogPrintf("ERROR: in staking block %s - invalid coinbase output 1\n", blkHash.ToString().c_str());
+                                                        return false;
+                                                    }
+                                                    CTokenOutput to;
+                                                    if (p.evalCode == EVAL_RESERVE_OUTPUT &&
+                                                        !(p.vData.size() &&
+                                                          (to = CTokenOutput(p.vData[0])).IsValid() &&
+                                                          to.reserveValues.valueMap.size() == 1 &&
+                                                          to.reserveValues.valueMap.count(VERUS_CHAINID)))
+                                                    {
+                                                        printf("ERROR: in staking block %s - invalid reserve coinbase output\n", blkHash.ToString().c_str());
+                                                        LogPrintf("ERROR: in staking block %s - invalid reserve coinbase output\n", blkHash.ToString().c_str());
                                                         return false;
                                                     }
                                                 }
@@ -2109,14 +2127,12 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                                                     return false;
                                                 }
 
-                                                CCurrencyValueMap outVal = oneOut.scriptPubKey.ReserveOutValue(p);
                                                 if (p.version >= p.VERSION_V3 &&
                                                     !oneOut.scriptPubKey.IsInstantSpendOrUnspendable() &&
                                                     (oneOut.scriptPubKey.IsSpendableOutputType()))
                                                 {
                                                     // we need to make sure we output only to delegate or back to the currency
-                                                    // TODO: enable currency contribution, now all goes to miner/staker
-                                                    // normalize destination to ID
+                                                    // normalize destination to destinationID
                                                     if (p.vKeys[0].which() == COptCCParams::ADDRTYPE_PK)
                                                     {
                                                         p.vKeys[0] = CKeyID(GetDestinationID(p.vKeys[0]));
@@ -2129,8 +2145,6 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                                                         LogPrintf("%s: staking block %s - invalid coinbase destinations\n", __func__, blkHash.ToString().c_str());
                                                         return false;
                                                     }
-                                                    outVal.valueMap[ASSETCHAINS_CHAINID] += oneOut.nValue;
-                                                    cbOutputs[p.vKeys[0]] += outVal;
                                                 }
                                                 else if (!oneOut.scriptPubKey.IsInstantSpendOrUnspendable() ||
                                                             oneOut.nValue ||
@@ -3147,6 +3161,8 @@ extern void vcalc_sha256(char deprecated[(256 >> 3) * 2 + 1], uint8_t hash[256 >
 
 uint32_t CCurrencyDefinition::MagicNumber() const
 {
+    bool isVerusMainnet = (!PBAAS_TESTMODE && GetID() == VERUS_CHAINID);
+
     std::vector<unsigned char> extraBuffer;
     extraBuffer.reserve(384);
 
@@ -3183,7 +3199,7 @@ uint32_t CCurrencyDefinition::MagicNumber() const
 
             // now incorporate time locks, which was only supported on Verus mainnet and is no
             // longer available
-            if (_IsVerusMainnetActive())
+            if (isVerusMainnet)
             {
                 uint64_t timeLockGTE = 19200000000, timeUnlockFrom = 129600, timeUnlockTo = 1180800;
                 extraBuffer.resize(extraBuffer.size() + sizeof(timeLockGTE) + sizeof(timeUnlockFrom) + sizeof(timeUnlockTo));
@@ -3220,7 +3236,7 @@ uint32_t CCurrencyDefinition::MagicNumber() const
     }
 
     std::string currencyName(name);
-    if (currencyName == "VRSC")
+    if (isVerusMainnet)
     {
         currencyName = boost::to_upper_copy(currencyName);
     }
@@ -8999,7 +9015,7 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                     {
                         LogPrintf("%s: Cross-chain functions temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
                     }
-                    return;
+                    continue;
                 }
                 if (systemDef.IsGateway() && ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisableGatewayCrossChainKey()))
                 {
@@ -9007,7 +9023,7 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                     {
                         LogPrintf("%s: Cross-chain function for non-PBaaS gateways temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
                     }
-                    return;
+                    continue;
                 }
 
                 // when we get here, we have a consecutive number of transfer outputs to consume in txInputs
