@@ -44,6 +44,7 @@ extern uint160 ASSETCHAINS_CHAINID;
 extern uint32_t PBAAS_TESTFORK2_TIME;
 extern uint32_t PBAAS_ENFORCE_CORRECT_EVIDENCE_TIME;
 extern uint32_t PBAAS_TESTFORK3_TIME;
+extern uint32_t PBAAS_TESTFORK4_TIME;
 extern uint32_t PBAAS_MAINDEFI3_HEIGHT;
 
 // reserve output is a special kind of token output that does not have to carry it's identifier, as it
@@ -1337,15 +1338,13 @@ public:
 
     std::vector<CAmount> PricesInReserve(bool roundUp=false) const;
 
-    // This considers one currency at a time
-    CAmount ConvertAmounts(CAmount inputReserve, CAmount inputFractional, CCurrencyState &newState, int32_t reserveIndex=0) const;
-
     // convert amounts for multi-reserve fractional reserve currencies
     // one entry in the vector for each currency in and one fractional input for each
     // currency expected as output
     std::vector<CAmount> ConvertAmounts(const std::vector<CAmount> &inputReserve,    // reserves to convert to fractional
                                         const std::vector<CAmount> &inputFractional,    // fractional to convert to each reserve
                                         CCurrencyState &newState,
+                                        CValidationState &validationState,
                                         const std::vector<std::vector<CAmount>> *pCrossConversions=nullptr,
                                         std::vector<CAmount> *pViaPrices=nullptr) const;
 
@@ -1497,6 +1496,11 @@ public:
     std::vector<CAmount> conversionFees;    // total of only conversion fees, which will accrue to the conversion transaction
     std::vector<int32_t> priorWeights;      // previous weights to enable reversal of state
 
+    enum ReversionUpdate {
+        PBAAS_1_0_0 = 0,
+        PBAAS_1_0_8 = 1
+    };
+
     CCoinbaseCurrencyState() : primaryCurrencyOut(0), preConvertedOut(0), primaryCurrencyFees(0), primaryCurrencyConversionFees(0) {}
 
     CCoinbaseCurrencyState(const CCurrencyState &CurrencyState,
@@ -1541,7 +1545,7 @@ public:
 
     CCoinbaseCurrencyState(const CTransaction &tx, int *pOutIdx=NULL);
 
-    bool ValidateConversionLimits() const;
+    bool ValidateConversionLimits(bool checkZeroViaOnlyPostLaunch=false) const;
 
     ADD_SERIALIZE_METHODS;
 
@@ -1603,7 +1607,7 @@ public:
                                              CCurrencyValueMap &liquidityFees,
                                              CCurrencyValueMap &convertedFees) const;
 
-    void RevertReservesAndSupply(const uint160 &systemID=ASSETCHAINS_CHAINID, bool pbaasInitialChainCurrency=false);
+    void RevertReservesAndSupply(const uint160 &systemID=ASSETCHAINS_CHAINID, bool pbaasInitialChainCurrency=false, ReversionUpdate reversionUpdate=PBAAS_1_0_0);
 
     template <typename NUMBERVECTOR>
     static NUMBERVECTOR AddVectors(const NUMBERVECTOR &a, const NUMBERVECTOR &b)
