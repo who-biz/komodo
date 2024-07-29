@@ -23,6 +23,7 @@
 
 #include <boost/foreach.hpp>
 #include <boost/unordered_map.hpp>
+#include "zcash/History.hpp"
 #include "zcash/IncrementalMerkleTree.hpp"
 #include "veruslaunch.h"
 #include "pbaas/reserves.h"
@@ -339,6 +340,7 @@ typedef boost::unordered_map<uint256, CCoinsCacheEntry, CCoinsKeyHasher> CCoinsM
 typedef boost::unordered_map<uint256, CAnchorsSproutCacheEntry, CCoinsKeyHasher> CAnchorsSproutMap;
 typedef boost::unordered_map<uint256, CAnchorsSaplingCacheEntry, CCoinsKeyHasher> CAnchorsSaplingMap;
 typedef boost::unordered_map<uint256, CNullifiersCacheEntry, CCoinsKeyHasher> CNullifiersMap;
+typedef boost::unordered_map<uint32_t, HistoryCache> CHistoryCacheMap;
 
 struct CCoinsStats
 {
@@ -353,6 +355,7 @@ struct CCoinsStats
     CCoinsStats() : nHeight(0), nTransactions(0), nTransactionOutputs(0), nSerializedSize(0), nTotalAmount(0) {}
 };
 
+class SubtreeCache;
 
 /** Abstract view on the open txout dataset. */
 class CCoinsView
@@ -380,6 +383,39 @@ public:
     //! Get the current "tip" or the latest anchored tree root in the chain
     virtual uint256 GetBestAnchor(ShieldedType type) const;
 
+    //! Get the current chain history length (which should be roughly chain height x2)
+    virtual HistoryIndex GetHistoryLength(uint32_t epochId) const;
+
+    //! Get history node at specified index
+    virtual HistoryNode GetHistoryAt(uint32_t epochId, HistoryIndex index) const;
+
+    //! Get current history root
+    virtual uint256 GetHistoryRoot(uint32_t epochId) const;
+
+    //! Get the largest completed subtree data for the TRACKED_SUBTREE_HEIGHT depth subtrees known
+    //! to the node for a given protocol. std::nullopt is returned in the event there are no
+    //! complete subtrees.
+    virtual std::optional<libzcash::LatestSubtree> GetLatestSubtree(ShieldedType type) const;
+
+    //! Returns the index of the (expected) current TRACKED_SUBTREE_HEIGHT depth subtree. This
+    //! is essentially just one larger than the latest complete subtree's index (or zero, if
+    //! there is no latest subtree)
+    libzcash::SubtreeIndex CurrentSubtreeIndex(ShieldedType type) const {
+        auto latestSubtree = GetLatestSubtree(type);
+        if (latestSubtree.has_value()) {
+            return latestSubtree->index + 1;
+        } else {
+            return 0;
+        }
+    }
+
+    //! Gets the cached data about the TRACKED_SUBTREE_HEIGHT subtree for the specified
+    //! protocol at the provided index, if that subtree is complete.
+    virtual std::optional<libzcash::SubtreeData> GetSubtreeData(
+            ShieldedType type,
+            libzcash::SubtreeIndex index) const;
+
+
     //! Do a bulk modification (multiple CCoins changes + BestBlock change).
     //! The passed mapCoins can be modified.
     virtual bool BatchWrite(CCoinsMap &mapCoins,
@@ -389,7 +425,9 @@ public:
                             CAnchorsSproutMap &mapSproutAnchors,
                             CAnchorsSaplingMap &mapSaplingAnchors,
                             CNullifiersMap &mapSproutNullifiers,
-                            CNullifiersMap &mapSaplingNullifiers);
+                            CNullifiersMap &mapSaplingNullifiers,
+                            CHistoryCacheMap &historyCacheMap,
+                            SubtreeCache &cacheSaplingSubtrees);
 
     //! Calculate statistics about the unspent transaction output set
     virtual bool GetStats(CCoinsStats &stats) const;
@@ -398,6 +436,59 @@ public:
     virtual ~CCoinsView() {}
 };
 
+//! This class is used by `CCoinsViewCache` to internally store, for each
+//! shielded type, the roots of complete subtrees that have not yet been flushed
+//! to the backing `CCoinsView`. This allows the cache to both store new
+//! subtree roots and handle removing subtree roots from the backing view when the
+//! cache is flushed.
+class SubtreeCache {
+    public:
+
+    bool initialized = false;
+    //! We store in `parentLatestSubtree` our perspective of what the latest
+    //! subtree ought to be in the backing `CCoinsView`. If subtrees are
+    //! removed from this subtree cache but no new complete subtrees exist,
+    //! they must be removed from the backing view later when it is flushed.
+    std::optional<libzcash::LatestSubtree> parentLatestSubtree;
+    //! New subtrees slated to be written to the backing `CCoinsView`.
+    std::vector<libzcash::SubtreeData> newSubtrees;
+    ShieldedType type;
+
+    SubtreeCache(ShieldedType type) : type(type) { };
+
+    //! Initializes the subtree cache so that the `parentLatestSubtree`
+    //! stored internally is consistent with the parent view.
+    void Initialize(CCoinsView *parentView);
+
+    //! Resets this cache to its original uninitialized state.
+    void clear();
+
+    //! Gets the latest subtree for this cache, using the parent view
+    //! as a reference if needed.
+    std::optional<libzcash::LatestSubtree> GetLatestSubtree(CCoinsView *parentView);
+
+    //! Gets the subtree data for a given index, if available.
+    std::optional<libzcash::SubtreeData> GetSubtreeData(CCoinsView *parentView, libzcash::SubtreeIndex index);
+
+    //! Inserts a new subtree into the view.
+    void PushSubtree(CCoinsView *parentView, libzcash::SubtreeData subtree);
+
+    //! Removes the last subtree added to the view; this will throw an
+    //! exception if the view has no subtrees.
+    void PopSubtree(CCoinsView *parentView);
+
+    //! Effectively pops all subtrees from the view
+    void ResetSubtrees();
+
+    //! Writes a child map to this cache; this clears the child map.
+    void BatchWrite(CCoinsView *parentView, SubtreeCache &childMap);
+};
+
+namespace memusage {
+    static inline size_t DynamicUsage(const SubtreeCache& cache) {
+        return DynamicUsage(cache.newSubtrees);
+    }
+}
 
 /** CCoinsView backed by another CCoinsView */
 class CCoinsViewBacked : public CCoinsView
@@ -414,6 +505,13 @@ public:
     bool HaveCoins(const uint256 &txid) const;
     uint256 GetBestBlock() const;
     uint256 GetBestAnchor(ShieldedType type) const;
+    HistoryIndex GetHistoryLength(uint32_t epochId) const;
+    HistoryNode GetHistoryAt(uint32_t epochId, HistoryIndex index) const;
+    uint256 GetHistoryRoot(uint32_t epochId) const;
+    std::optional<libzcash::LatestSubtree> GetLatestSubtree(ShieldedType type) const;
+    std::optional<libzcash::SubtreeData> GetSubtreeData(
+            ShieldedType type,
+            libzcash::SubtreeIndex index) const;
     void SetBackend(CCoinsView &viewIn);
     bool BatchWrite(CCoinsMap &mapCoins,
                     const uint256 &hashBlock,
@@ -422,7 +520,9 @@ public:
                     CAnchorsSproutMap &mapSproutAnchors,
                     CAnchorsSaplingMap &mapSaplingAnchors,
                     CNullifiersMap &mapSproutNullifiers,
-                    CNullifiersMap &mapSaplingNullifiers);
+                    CNullifiersMap &mapSaplingNullifiers,
+                    CHistoryCacheMap &historyCacheMap,
+                    SubtreeCache &cacheSaplingSubtrees);
     bool GetStats(CCoinsStats &stats) const;
 };
 
@@ -499,6 +599,8 @@ protected:
     mutable CAnchorsSaplingMap cacheSaplingAnchors;
     mutable CNullifiersMap cacheSproutNullifiers;
     mutable CNullifiersMap cacheSaplingNullifiers;
+    mutable CHistoryCacheMap historyCacheMap;
+    mutable SubtreeCache cacheSaplingSubtrees = SubtreeCache(SAPLING);
 
     /* Cached dynamic memory usage for the inner CCoins objects. */
     mutable size_t cachedCoinsUsage;
@@ -516,6 +618,13 @@ public:
     bool HaveCoins(const uint256 &txid) const;
     uint256 GetBestBlock() const;
     uint256 GetBestAnchor(ShieldedType type) const;
+    HistoryIndex GetHistoryLength(uint32_t epochId) const;
+    HistoryNode GetHistoryAt(uint32_t epochId, HistoryIndex index) const;
+    uint256 GetHistoryRoot(uint32_t epochId) const;
+    std::optional<libzcash::LatestSubtree> GetLatestSubtree(ShieldedType type) const;
+    std::optional<libzcash::SubtreeData> GetSubtreeData(
+            ShieldedType type,
+            libzcash::SubtreeIndex index) const;
     void SetBestBlock(const uint256 &hashBlock);
     bool BatchWrite(CCoinsMap &mapCoins,
                     const uint256 &hashBlock,
@@ -524,7 +633,9 @@ public:
                     CAnchorsSproutMap &mapSproutAnchors,
                     CAnchorsSaplingMap &mapSaplingAnchors,
                     CNullifiersMap &mapSproutNullifiers,
-                    CNullifiersMap &mapSaplingNullifiers);
+                    CNullifiersMap &mapSaplingNullifiers,
+                    CHistoryCacheMap &historyCacheMap,
+                    SubtreeCache &cacheSaplingSubtrees);
 
 
     // Adds the tree to mapSproutAnchors (or mapSaplingAnchors based on the type of tree)
@@ -537,6 +648,24 @@ public:
 
     // Marks nullifiers for a given transaction as spent or not.
     void SetNullifiers(const CTransaction& tx, bool spent);
+
+    // Push MMR node history at the end of the history tree
+    void PushHistoryNode(uint32_t epochId, const HistoryNode node);
+
+    // Pop MMR node history from the end of the history tree
+    void PopHistoryNode(uint32_t epochId);
+
+    // Push a new subtree for a given shielded type. Only Sapling
+    // and Orchard supported.
+    void PushSubtree(ShieldedType type, libzcash::SubtreeData subtree);
+
+    // Pop a subtree out of the database. Only Sapling and Orchard
+    // supported. Throws an exception if there isn't a subtree present
+    // in the database.
+    void PopSubtree(ShieldedType type);
+
+    //! Effectively pops all subtrees from the view
+    void ResetSubtrees(ShieldedType type);
 
     /**
      * Return a pointer to CCoins in the cache, or NULL if not found. This is
@@ -638,6 +767,18 @@ private:
         const uint256 &currentRoot,
         Tree &tree
     );
+
+    //! Preload history tree for further update.
+    //!
+    //! If extra = true, extra nodes for deletion are also preloaded.
+    //! This will allow to delete tail entries from preloaded tree without
+    //! any further database lookups.
+    //!
+    //! Returns number of peaks, not total number of loaded nodes.
+    uint32_t PreloadHistoryTree(uint32_t epochId, bool extra, std::vector<HistoryEntry> &entries, std::vector<uint32_t> &entry_indices);
+
+    //! Selects history cache for specified epoch.
+    HistoryCache& SelectHistoryCache(uint32_t epochId) const;
 };
 
 #endif // BITCOIN_COINS_H

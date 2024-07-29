@@ -16,6 +16,7 @@
 #include "compat/sanity.h"
 #include "consensus/upgrades.h"
 #include "consensus/validation.h"
+#include "experimental_features.h"
 #include "httpserver.h"
 #include "httprpc.h"
 #include "key.h"
@@ -1873,6 +1874,19 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
                     break;
                 }
 
+                // Check for changed -lightwalletd state
+                pblocktree->ReadFlag("lightwalletd", fExperimentalLightWalletd);
+                if (!fReindex && fExperimentalLightWalletd != GetBoolArg("-lightwalletd", fExperimentalLightWalletd) ) {
+                    strLoadError = _("You need to rebuild the database using -reindex to change -lightwalletd");
+                    break;
+                }
+                bool fLightWalletdPreviouslySet = false;
+                pblocktree->ReadFlag("lightwalletd", fLightWalletdPreviouslySet);
+                if (fExperimentalLightWalletd != fLightWalletdPreviouslySet) {
+                    strLoadError = _("You need to rebuild the database using -reindex to change -lightwalletd");
+                    break;
+                }
+
                 // Check for changed -prune state.  What we are concerned about is a user who has pruned blocks
                 // in the past, but is now trying to run unpruned.
                 if (!fReindex && fHavePruned && !fPruneMode) {
@@ -1940,6 +1954,29 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
                         strLoadError = _("Corrupted block database detected");
                         break;
                     }
+                }
+
+                if (fExperimentalLightWalletd) {
+                    LOCK(cs_main);
+
+                    SaplingMerkleTree sapling_tree;
+                    assert(pcoinsdbview->GetSaplingAnchorAt(pcoinsdbview->GetBestAnchor(SAPLING), sapling_tree));
+
+                    if (pcoinsdbview->CurrentSubtreeIndex(SAPLING) != sapling_tree.current_subtree_index()) {
+                        uiInterface.InitMessage(_("Regenerating subtrees for Sapling..."));
+                        LogPrintf("init: the complete subtree database for Sapling needs to be migrated. Starting RegenerateSubtrees...\n");
+                        struct timeval tv_start, tv_end;
+                        float elapsed;
+                        gettimeofday(&tv_start, 0);
+                        if (!RegenerateSubtrees(SAPLING, chainparams.GetConsensus())) {
+                            strLoadError = _("Error migrating subtree database for Sapling");
+                            break;
+                        }
+                        gettimeofday(&tv_end, 0);
+                        elapsed = float(tv_end.tv_sec-tv_start.tv_sec) + (tv_end.tv_usec-tv_start.tv_usec)/float(1000000);
+                        LogPrintf("init: Sapling subtree database migrated in %f seconds\n", elapsed);
+                    }
+
                 }
             } catch (const std::exception& e) {
                 if (fDebug) LogPrintf("%s\n", e.what());

@@ -53,6 +53,11 @@ bool CCoinsView::GetCoins(const uint256 &txid, CCoins &coins) const { return fal
 bool CCoinsView::HaveCoins(const uint256 &txid) const { return false; }
 uint256 CCoinsView::GetBestBlock() const { return uint256(); }
 uint256 CCoinsView::GetBestAnchor(ShieldedType type) const { return uint256(); };
+/*CCoinsViewBacked::GetHistoryLength(uint32_t epochId) const { return false; }
+HistoryNode CCoinsViewBacked::GetHistoryAt(uint32_t epochId, HistoryIndex index) const { return false; }
+uint256 CCoinsViewBacked::GetHistoryRoot(uint32_t epochId) const { return false; }
+std::optional<libzcash::LatestSubtree> CCoinsViewBacked::GetLatestSubtree(ShieldedType type) const { return false; }
+std::optional<libzcash::SubtreeData> CCoinsViewBacked::GetSubtreeData(ShieldedType type, libzcash::SubtreeIndex index) const { return false; }*/
 bool CCoinsView::BatchWrite(CCoinsMap &mapCoins,
                             const uint256 &hashBlock,
                             const uint256 &hashSproutAnchor,
@@ -60,7 +65,9 @@ bool CCoinsView::BatchWrite(CCoinsMap &mapCoins,
                             CAnchorsSproutMap &mapSproutAnchors,
                             CAnchorsSaplingMap &mapSaplingAnchors,
                             CNullifiersMap &mapSproutNullifiers,
-                            CNullifiersMap &mapSaplingNullifiers) { return false; }
+                            CNullifiersMap &mapSaplingNullifiers,
+                            CHistoryCacheMap &historyCacheMap,
+                            SubtreeCache &cacheSaplingSubtrees) { return false; }
 bool CCoinsView::GetStats(CCoinsStats &stats) const { return false; }
 
 
@@ -73,6 +80,11 @@ bool CCoinsViewBacked::GetCoins(const uint256 &txid, CCoins &coins) const { retu
 bool CCoinsViewBacked::HaveCoins(const uint256 &txid) const { return base->HaveCoins(txid); }
 uint256 CCoinsViewBacked::GetBestBlock() const { return base->GetBestBlock(); }
 uint256 CCoinsViewBacked::GetBestAnchor(ShieldedType type) const { return base->GetBestAnchor(type); }
+HistoryIndex CCoinsViewBacked::GetHistoryLength(uint32_t epochId) const { return base->GetHistoryLength(epochId); }
+HistoryNode CCoinsViewBacked::GetHistoryAt(uint32_t epochId, HistoryIndex index) const { return base->GetHistoryAt(epochId, index); }
+uint256 CCoinsViewBacked::GetHistoryRoot(uint32_t epochId) const { return base->GetHistoryRoot(epochId); }
+std::optional<libzcash::LatestSubtree> CCoinsViewBacked::GetLatestSubtree(ShieldedType type) const { return base->GetLatestSubtree(type); }
+std::optional<libzcash::SubtreeData> CCoinsViewBacked::GetSubtreeData(ShieldedType type, libzcash::SubtreeIndex index) const { return base->GetSubtreeData(type, index); }
 void CCoinsViewBacked::SetBackend(CCoinsView &viewIn) { base = &viewIn; }
 bool CCoinsViewBacked::BatchWrite(CCoinsMap &mapCoins,
                                   const uint256 &hashBlock,
@@ -81,7 +93,14 @@ bool CCoinsViewBacked::BatchWrite(CCoinsMap &mapCoins,
                                   CAnchorsSproutMap &mapSproutAnchors,
                                   CAnchorsSaplingMap &mapSaplingAnchors,
                                   CNullifiersMap &mapSproutNullifiers,
-                                  CNullifiersMap &mapSaplingNullifiers) { return base->BatchWrite(mapCoins, hashBlock, hashSproutAnchor, hashSaplingAnchor, mapSproutAnchors, mapSaplingAnchors, mapSproutNullifiers, mapSaplingNullifiers); }
+                                  CNullifiersMap &mapSaplingNullifiers,
+                                  CHistoryCacheMap &historyCacheMap,
+                                  SubtreeCache &cacheSaplingSubtrees) { 
+    return base->BatchWrite(mapCoins, hashBlock,
+                            hashSproutAnchor, hashSaplingAnchor, mapSproutAnchors,
+                            mapSaplingAnchors, mapSproutNullifiers, mapSaplingNullifiers,
+                            historyCacheMap, cacheSaplingSubtrees);
+}
 bool CCoinsViewBacked::GetStats(CCoinsStats &stats) const { return base->GetStats(stats); }
 
 CCoinsKeyHasher::CCoinsKeyHasher() : salt(GetRandHash()) {}
@@ -99,6 +118,8 @@ size_t CCoinsViewCache::DynamicMemoryUsage() const {
            memusage::DynamicUsage(cacheSaplingAnchors) +
            memusage::DynamicUsage(cacheSproutNullifiers) +
            memusage::DynamicUsage(cacheSaplingNullifiers) +
+           memusage::DynamicUsage(historyCacheMap) +
+           memusage::DynamicUsage(cacheSaplingSubtrees) +
            cachedCoinsUsage;
 }
 
@@ -192,6 +213,52 @@ bool CCoinsViewCache::GetNullifier(const uint256 &nullifier, ShieldedType type) 
     return tmp;
 }
 
+HistoryIndex CCoinsViewCache::GetHistoryLength(uint32_t epochId) const {
+    HistoryCache& historyCache = SelectHistoryCache(epochId);
+    return historyCache.length;
+}
+
+HistoryNode CCoinsViewCache::GetHistoryAt(uint32_t epochId, HistoryIndex index) const {
+    HistoryCache& historyCache = SelectHistoryCache(epochId);
+
+    if (index >= historyCache.length) {
+        // Caller should ensure that it is limiting history
+        // request to 0..GetHistoryLength(epochId)-1 range
+        throw std::runtime_error("Invalid history request");
+    }
+
+    if (index >= historyCache.updateDepth) {
+        return historyCache.appends[index];
+    }
+
+    return base->GetHistoryAt(epochId, index);
+}
+
+uint256 CCoinsViewCache::GetHistoryRoot(uint32_t epochId) const {
+    return SelectHistoryCache(epochId).root;
+}
+
+std::optional<libzcash::LatestSubtree> CCoinsViewCache::GetLatestSubtree(ShieldedType type) const {
+    switch (type) {
+        case SAPLING:
+            return cacheSaplingSubtrees.GetLatestSubtree(base);
+        default:
+            throw std::runtime_error("GetLatestSubtree: only sapling shielded type is supported");
+    }
+}
+
+std::optional<libzcash::SubtreeData> CCoinsViewCache::GetSubtreeData(
+    ShieldedType type,
+    libzcash::SubtreeIndex index) const
+{
+    switch (type) {
+        case SAPLING:
+            return cacheSaplingSubtrees.GetSubtreeData(base, index);
+        default:
+            throw std::runtime_error("GetSubtreeData: unsupported shielded type");
+    }
+}
+
 template<typename Tree, typename Cache, typename CacheIterator, typename CacheEntry>
 void CCoinsViewCache::AbstractPushAnchor(
     const Tree &tree,
@@ -262,6 +329,300 @@ void CCoinsViewCache::BringBestAnchorIntoCache(
 )
 {
     assert(GetSaplingAnchorAt(currentRoot, tree));
+}
+
+void draftMMRNode(std::vector<uint32_t> &indices,
+                  std::vector<HistoryEntry> &entries,
+                  HistoryNode nodeData,
+                  uint32_t alt,
+                  uint32_t peak_pos)
+{
+    HistoryEntry newEntry = alt == 0
+        ? libzcash::LeafToEntry(nodeData)
+        // peak_pos - (1 << alt) is the array position of left child.
+        // peak_pos - 1 is the array position of right child.
+        : libzcash::NodeToEntry(nodeData, peak_pos - (1 << alt), peak_pos - 1);
+
+    indices.push_back(peak_pos);
+    entries.push_back(newEntry);
+}
+
+// Computes floor(log2(x)).
+static inline uint32_t floor_log2(uint32_t x) {
+    assert(x > 0);
+    int log = 0;
+    while (x >>= 1) { ++log; }
+    return log;
+}
+
+// Computes the altitude of the largest subtree for an MMR with n nodes,
+// which is floor(log2(n + 1)) - 1.
+static inline uint32_t altitude(uint32_t n) {
+    return floor_log2(n + 1) - 1;
+}
+
+uint32_t CCoinsViewCache::PreloadHistoryTree(uint32_t epochId, bool extra, std::vector<HistoryEntry> &entries, std::vector<uint32_t> &entry_indices) {
+    auto treeLength = GetHistoryLength(epochId);
+
+    if (treeLength <= 0) {
+        throw std::runtime_error("Invalid PreloadHistoryTree state called - tree should exist");
+    } else if (treeLength == 1) {
+        entries.push_back(libzcash::LeafToEntry(GetHistoryAt(epochId, 0)));
+        entry_indices.push_back(0);
+        return 1;
+    }
+
+    uint32_t last_peak_pos = 0;
+    uint32_t last_peak_alt = 0;
+    uint32_t alt = 0;
+    uint32_t peak_pos = 0;
+    uint32_t total_peaks = 0;
+
+    // Assume the following example peak layout with 14 leaves, and 25 stored nodes in
+    // total (the "tree length"):
+    //
+    //             P
+    //            /\
+    //           /  \
+    //          / \  \
+    //        /    \  \  Altitude
+    //     _A_      \  \    3
+    //   _/   \_     B  \   2
+    //  / \   / \   / \  C  1
+    // /\ /\ /\ /\ /\ /\ /\ 0
+    //
+    // We start by determining the altitude of the highest peak (A).
+    alt = altitude(treeLength);
+
+    // We determine the position of the highest peak (A) by pretending it is the right
+    // sibling in a tree, and its left-most leaf has position 0. Then the left sibling
+    // of (A) has position -1, and so we can "jump" to the peak's position by computing
+    // -1 + 2^(alt + 1) - 1.
+    peak_pos = (1 << (alt + 1)) - 2;
+
+    // Now that we have the position and altitude of the highest peak (A), we collect
+    // the remaining peaks (B, C). We navigate the peaks as if they were nodes in this
+    // Merkle tree (with additional imaginary nodes 1 and 2, that have positions beyond
+    // the MMR's length):
+    //
+    //             / \
+    //            /   \
+    //           /     \
+    //         /         \
+    //       A ==========> 1
+    //      / \          //  \
+    //    _/   \_       B ==> 2
+    //   /\     /\     /\    //
+    //  /  \   /  \   /  \   C
+    // /\  /\ /\  /\ /\  /\ /\
+    //
+    while (alt != 0) {
+        // If peak_pos is out of bounds of the tree, we compute the position of its left
+        // child, and drop down one level in the tree.
+        if (peak_pos >= treeLength) {
+            // left child, -2^alt
+            peak_pos = peak_pos - (1 << alt);
+            alt = alt - 1;
+        }
+
+        // If the peak exists, we take it and then continue with its right sibling.
+        if (peak_pos < treeLength) {
+            draftMMRNode(entry_indices, entries, GetHistoryAt(epochId, peak_pos), alt, peak_pos);
+
+            last_peak_pos = peak_pos;
+            last_peak_alt = alt;
+
+            // right sibling
+            peak_pos = peak_pos + (1 << (alt + 1)) - 1;
+        }
+    }
+
+    total_peaks = entries.size();
+
+    // Return early if we don't require extra nodes.
+    if (!extra) return total_peaks;
+
+    alt = last_peak_alt;
+    peak_pos = last_peak_pos;
+
+
+    //             P
+    //            /\
+    //           /  \
+    //          / \  \
+    //        /    \  \
+    //     _A_      \  \
+    //   _/   \_     B  \
+    //  / \   / \   / \  C
+    // /\ /\ /\ /\ /\ /\ /\
+    //                   D E
+    //
+    // For extra peaks needed for deletion, we do extra pass on right slope of the last peak
+    // and add those nodes + their siblings. Extra would be (D, E) for the picture above.
+    while (alt > 0) {
+        uint32_t left_pos = peak_pos - (1 << alt);
+        uint32_t right_pos = peak_pos - 1;
+        alt = alt - 1;
+
+        // drafting left child
+        draftMMRNode(entry_indices, entries, GetHistoryAt(epochId, left_pos), alt, left_pos);
+
+        // drafting right child
+        draftMMRNode(entry_indices, entries, GetHistoryAt(epochId, right_pos), alt, right_pos);
+
+        // continuing on right slope
+        peak_pos = right_pos;
+    }
+
+    return total_peaks;
+}
+
+HistoryCache& CCoinsViewCache::SelectHistoryCache(uint32_t epochId) const {
+    auto entry = historyCacheMap.find(epochId);
+
+    if (entry != historyCacheMap.end()) {
+        return entry->second;
+    } else {
+        auto cache = HistoryCache(
+            base->GetHistoryLength(epochId),
+            base->GetHistoryRoot(epochId),
+            epochId
+        );
+        return historyCacheMap.insert({epochId, cache}).first->second;
+    }
+}
+
+void CCoinsViewCache::PushHistoryNode(uint32_t epochId, const HistoryNode node) {
+    HistoryCache& historyCache = SelectHistoryCache(epochId);
+
+    if (historyCache.length == 0) {
+        // special case, it just goes into the cache right away
+        historyCache.Extend(node);
+
+        historyCache.root = uint256::FromRawBytes(mmr::hash_node(epochId, node));
+
+        return;
+    }
+
+    std::vector<HistoryEntry> entries;
+    std::vector<uint32_t> entry_indices;
+
+    PreloadHistoryTree(epochId, false, entries, entry_indices);
+
+    uint256 newRoot;
+    std::array<HistoryNode, 32> appendBuf = {};
+
+    auto effect = mmr::append(
+        epochId,
+        historyCache.length,
+        {entry_indices.data(), entry_indices.size()},
+        {entries.data(), entries.size()},
+        node,
+        {appendBuf.data(), 32}
+    );
+
+    for (size_t i = 0; i < effect.count; i++) {
+        historyCache.Extend(appendBuf[i]);
+    }
+
+    historyCache.root = uint256::FromRawBytes(effect.root);
+}
+
+void CCoinsViewCache::PopHistoryNode(uint32_t epochId) {
+    HistoryCache& historyCache = SelectHistoryCache(epochId);
+
+    switch (historyCache.length) {
+        case 0:
+        {
+            // Caller is generally not expected to pop from empty tree! Caller
+            // should switch to previous epoch and pop history from there.
+
+            // If we are doing an expected rollback that changes the consensus
+            // branch ID for some upgrade (or introduces one that wasn't present
+            // at the equivalent height) this will occur because
+            // `SelectHistoryCache` selects the tree for the new consensus
+            // branch ID, not the one that existed on the chain being rolled
+            // back.
+
+            // Sensible action is to truncate the history cache:
+        }
+        case 1:
+        {
+            // Just resetting tree to empty
+            historyCache.Truncate(0);
+            historyCache.root = uint256();
+            return;
+        }
+        case 2:
+        {
+            // - A tree with one leaf has length 1.
+            // - A tree with two leaves has length 3.
+            throw std::runtime_error("a history tree cannot have two nodes");
+        }
+        case 3:
+        {
+            const HistoryNode tmpHistoryRoot = GetHistoryAt(epochId, 0);
+            // After removing a leaf from a tree with two leaves, we are left
+            // with a single-node tree, whose root is just the hash of that
+            // node.
+            auto newRoot = mmr::hash_node(
+                epochId,
+                tmpHistoryRoot);
+            historyCache.Truncate(1);
+            historyCache.root = uint256::FromRawBytes(newRoot);
+            return;
+        }
+        default:
+        {
+            // This is a non-elementary pop, so use the full tree logic.
+            std::vector<HistoryEntry> entries;
+            std::vector<uint32_t> entry_indices;
+
+            uint32_t peak_count = PreloadHistoryTree(epochId, true, entries, entry_indices);
+
+            auto effect = mmr::remove(
+                epochId,
+                historyCache.length,
+                {entry_indices.data(), entry_indices.size()},
+                {entries.data(), entries.size()},
+                peak_count
+            );
+
+            historyCache.Truncate(historyCache.length - effect.count);
+            historyCache.root = uint256::FromRawBytes(effect.root);
+            return;
+        }
+    }
+}
+
+void CCoinsViewCache::PushSubtree(ShieldedType type, libzcash::SubtreeData subtree)
+{
+    switch(type) {
+        case SAPLING:
+            return cacheSaplingSubtrees.PushSubtree(base, subtree);
+        default:
+            throw std::runtime_error("PushSubtree: only sapling shielded type is supported");
+    }
+}
+
+void CCoinsViewCache::PopSubtree(ShieldedType type)
+{
+    switch(type) {
+        case SAPLING:
+            return cacheSaplingSubtrees.PopSubtree(base);
+        default:
+            throw std::runtime_error("PushSubtree: only sapling shielded type is supported");
+    }
+}
+
+void CCoinsViewCache::ResetSubtrees(ShieldedType type)
+{
+    switch(type) {
+        case SAPLING:
+            return cacheSaplingSubtrees.ResetSubtrees();
+        default:
+            throw std::runtime_error("ResetSubtrees: unsupported shielded type");
+    }
 }
 
 template<typename Tree, typename Cache, typename CacheEntry>
@@ -483,6 +844,35 @@ void BatchWriteAnchors(
     }
 }
 
+void BatchWriteHistory(CHistoryCacheMap& historyCacheMap, CHistoryCacheMap& historyCacheMapIn) {
+    for (auto nextHistoryCache = historyCacheMapIn.begin(); nextHistoryCache != historyCacheMapIn.end(); nextHistoryCache++) {
+        auto historyCacheIn = nextHistoryCache->second;
+        auto epochId = nextHistoryCache->first;
+
+        auto historyCache = historyCacheMap.find(epochId);
+        if (historyCache != historyCacheMap.end()) {
+            // delete old entries since updateDepth
+            historyCache->second.Truncate(historyCacheIn.updateDepth);
+
+            // Replace/append new/updated entries. HistoryCache.Extend
+            // auto-indexes the nodes, so we need to extend in the same order as
+            // this cache is indexed.
+            for (size_t i = historyCacheIn.updateDepth; i < historyCacheIn.length; i++) {
+                historyCache->second.Extend(historyCacheIn.appends[i]);
+            }
+
+            // the lengths should now match
+            assert(historyCache->second.length == historyCacheIn.length);
+
+            // write current root
+            historyCache->second.root = historyCacheIn.root;
+        } else {
+            // Just insert the history cache into its parent
+            historyCacheMap.insert({epochId, historyCacheIn});
+        }
+    }
+}
+
 bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins,
                                  const uint256 &hashBlockIn,
                                  const uint256 &hashSproutAnchorIn,
@@ -490,7 +880,9 @@ bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins,
                                  CAnchorsSproutMap &mapSproutAnchors,
                                  CAnchorsSaplingMap &mapSaplingAnchors,
                                  CNullifiersMap &mapSproutNullifiers,
-                                 CNullifiersMap &mapSaplingNullifiers) {
+                                 CNullifiersMap &mapSaplingNullifiers,
+                                 CHistoryCacheMap &historyCacheMapIn,
+                                 SubtreeCache &cacheSaplingSubtreesIn) {
     assert(!hasModifier);
     for (CCoinsMap::iterator it = mapCoins.begin(); it != mapCoins.end();) {
         if (it->second.flags & CCoinsCacheEntry::DIRTY) { // Ignore non-dirty entries (optimization).
@@ -533,6 +925,10 @@ bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins,
     ::BatchWriteNullifiers(mapSproutNullifiers, cacheSproutNullifiers);
     ::BatchWriteNullifiers(mapSaplingNullifiers, cacheSaplingNullifiers);
 
+    ::BatchWriteHistory(historyCacheMap, historyCacheMapIn);
+
+    cacheSaplingSubtrees.BatchWrite(base, cacheSaplingSubtreesIn);
+
     hashSproutAnchor = hashSproutAnchorIn;
     hashSaplingAnchor = hashSaplingAnchorIn;
     hashBlock = hashBlockIn;
@@ -540,12 +936,27 @@ bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins,
 }
 
 bool CCoinsViewCache::Flush() {
-    bool fOk = base->BatchWrite(cacheCoins, hashBlock, hashSproutAnchor, hashSaplingAnchor, cacheSproutAnchors, cacheSaplingAnchors, cacheSproutNullifiers, cacheSaplingNullifiers);
+
+    cacheSaplingSubtrees.Initialize(base);
+    bool fOk = base->BatchWrite(cacheCoins,
+
+    bool fOk = base->BatchWrite(cacheCoins,
+                                hashBlock,
+                                hashSproutAnchor,
+                                hashSaplingAnchor,
+                                cacheSproutAnchors,
+                                cacheSaplingAnchors,
+                                cacheSproutNullifiers,
+                                cacheSaplingNullifiers,
+                                historyCacheMap,
+                                cacheSaplingSubtrees);
     cacheCoins.clear();
     cacheSproutAnchors.clear();
     cacheSaplingAnchors.clear();
     cacheSproutNullifiers.clear();
     cacheSaplingNullifiers.clear();
+    historyCacheMap.clear();
+    cacheSaplingSubtrees.clear();
     cachedCoinsUsage = 0;
     return fOk;
 }
@@ -788,4 +1199,157 @@ CCoinsModifier::~CCoinsModifier()
         // If the coin still exists after the modification, add the new usage
         cache.cachedCoinsUsage += it->second.coins.DynamicMemoryUsage();
     }
+}
+
+void SubtreeCache::clear() {
+    initialized = false;
+    parentLatestSubtree = std::nullopt;
+    newSubtrees.clear();
+}
+
+void SubtreeCache::Initialize(CCoinsView *parentView)
+{
+    if (!initialized) {
+        parentLatestSubtree = parentView->GetLatestSubtree(type);
+        initialized = true;
+    }
+}
+
+std::optional<libzcash::LatestSubtree> SubtreeCache::GetLatestSubtree(CCoinsView *parentView) {
+    Initialize(parentView);
+
+    if (newSubtrees.size() > 0) {
+        // The latest subtree is in our cache.
+
+        libzcash::SubtreeIndex index;
+        if (parentLatestSubtree.has_value()) {
+            // The best subtree index is newSubtrees.size() larger than
+            // our parent view's subtree index.
+            index = parentLatestSubtree.value().index + newSubtrees.size();
+        } else {
+            // The parent view has no subtrees
+            index = newSubtrees.size() - 1;
+        }
+
+        auto lastSubtree = newSubtrees.back();
+        return libzcash::LatestSubtree(index, lastSubtree.root, lastSubtree.nHeight);
+    } else {
+        return parentLatestSubtree;
+    }
+}
+
+std::optional<libzcash::SubtreeData> SubtreeCache::GetSubtreeData(CCoinsView *parentView, libzcash::SubtreeIndex index) {
+    Initialize(parentView);
+
+    auto latestSubtree = GetLatestSubtree(parentView);
+
+    if (!latestSubtree.has_value() || latestSubtree.value().index < index) {
+        // This subtree isn't complete in our local view
+        return std::nullopt;
+    }
+
+    if (parentLatestSubtree.has_value()) {
+        if (index <= parentLatestSubtree.value().index) {
+            // This subtree in question must have previously been flushed to the parent cache layer,
+            // so we ask for it there.
+            return parentView->GetSubtreeData(type, index);
+        } else {
+            // Get the index into our local `newSubtrees` where the subtree should
+            // be located.
+            auto localIndex = index - (parentLatestSubtree.value().index + 1);
+            assert(newSubtrees.size() > localIndex);
+            return newSubtrees[localIndex];
+        }
+    } else {
+        // The index we've been given is the index into our local `newSubtrees`
+        // since the parent view has no subtrees.
+        assert(newSubtrees.size() > index);
+        return newSubtrees[index];
+    }
+}
+
+void SubtreeCache::PushSubtree(CCoinsView *parentView, libzcash::SubtreeData subtree) {
+    Initialize(parentView);
+
+    newSubtrees.push_back(subtree);
+}
+
+void SubtreeCache::PopSubtree(CCoinsView *parentView) {
+    Initialize(parentView);
+
+    if (newSubtrees.empty()) {
+        // Try to pop from the parent view
+        if (parentLatestSubtree.has_value()) {
+            libzcash::SubtreeIndex parentIndex = parentLatestSubtree.value().index;
+
+            if (parentIndex == 0) {
+                // This pops the only subtree left in the parent view.
+                parentLatestSubtree = std::nullopt;
+            } else {
+                parentIndex -= 1;
+                auto newParent = parentView->GetSubtreeData(type, parentIndex);
+                if (!newParent.has_value()) {
+                    throw std::runtime_error("cache inconsistency; parent view does not have subtree");
+                }
+
+                parentLatestSubtree = libzcash::LatestSubtree(
+                    parentIndex,
+                    newParent.value().root,
+                    newParent.value().nHeight
+                );
+            }
+        } else {
+            throw std::runtime_error("tried to pop a subtree from an empty subtree list");
+        }
+    } else {
+        newSubtrees.pop_back();
+    }
+}
+
+void SubtreeCache::ResetSubtrees() {
+    // This ensures that all subtrees will be popped from the parent view
+    initialized = true;
+
+    parentLatestSubtree = std::nullopt;
+    newSubtrees.clear();
+}
+
+void SubtreeCache::BatchWrite(CCoinsView *parentView, SubtreeCache &childMap) {
+    Initialize(parentView);
+    auto bestSubtree = GetLatestSubtree(parentView);
+    if (!bestSubtree.has_value()) {
+        // We do not have any local subtrees, so it cannot be possible
+        // for the childMap to think we have any latest subtree, which
+        // suggests the wrong childMap was passed or the wrong backing
+        // view has been set in the cache.
+        if (childMap.parentLatestSubtree.has_value()) {
+            throw std::runtime_error("cache inconsistency; child view of parent's latest subtree cannot be correct");
+        }
+    } else {
+        uint64_t pops;
+        // Compute the number of times we must PopSubtree until our best subtree
+        // is the same as the child's parentLatestSubtree index.
+        if (childMap.parentLatestSubtree.has_value()) {
+            if (childMap.parentLatestSubtree.value().index > bestSubtree.value().index) {
+                throw std::runtime_error("cache inconsistency; child view of parent's latest subtree cannot be correct");
+            }
+            pops = bestSubtree.value().index - childMap.parentLatestSubtree.value().index;
+        } else {
+            // We have to pop everything.
+            pops = bestSubtree.value().index + 1;
+        }
+
+        for (uint64_t i = 0; i < pops; i++) {
+            PopSubtree(parentView);
+        }
+    }
+
+    // Now we can inherit the child's new subtrees
+    newSubtrees.insert(
+        newSubtrees.end(),
+        std::make_move_iterator(childMap.newSubtrees.begin()),
+        std::make_move_iterator(childMap.newSubtrees.end())
+    );
+
+    childMap.clear();
 }

@@ -21,6 +21,7 @@
 #include "consensus/upgrades.h"
 #include "consensus/validation.h"
 #include "deprecation.h"
+#include "experimental_features.h"
 #include "init.h"
 #include "merkleblock.h"
 #include "metrics.h"
@@ -54,6 +55,8 @@
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
 #include <boost/math/distributions/poisson.hpp>
+#include <boost/range/algorithm/lower_bound.hpp>
+#include <boost/range/irange.hpp>
 #include <boost/thread.hpp>
 #include <boost/static_assert.hpp>
 
@@ -3661,6 +3664,27 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
         }
     }
 
+    // Grab the latest subtree (according to the view) and use it
+    // to determine if the block being disconnected was responsible
+    // for completing a subtree. If so, we'll pop the subtree.
+    // (It is not possible for a block to complete more than one
+    // subtree, due to the maximum number of outputs/actions in
+    // a block being less than 2^16.)
+    //
+    // We do not store subtrees unless lightwalletd is enabled.
+    if (fExperimentalLightWalletd) {
+        auto maybeDisconnectSubtree = [&] (ShieldedType type) {
+            auto latestSubtree = view.GetLatestSubtree(type);
+            if (latestSubtree.has_value()) {
+                if (latestSubtree->nHeight == pindex->GetHeight()) {
+                    view.PopSubtree(type);
+                }
+            }
+        };
+
+        maybeDisconnectSubtree(SAPLING);
+    }
+
     // set the old best Sprout anchor back
     view.PopAnchor(blockUndo.old_sprout_tree_root, SPROUT);
 
@@ -4048,6 +4072,15 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
         assert(view.GetSaplingAnchorAt(view.GetBestAnchor(SAPLING), sapling_tree));
 
+    // Here we determine whether the CCoinsView view of our latest
+    // subtree matches that of the chain state. If it doesn't,
+    // the node had not been writing the latest subtrees to the
+    // view in the past and so later in this function we will
+    // not bother to add new subtrees.
+    //
+    // We do not store subtrees unless lightwalletd is enabled.
+    bool fUpdateSaplingSubtrees = fExperimentalLightWalletd && (view.CurrentSubtreeIndex(SAPLING) == sapling_tree.current_subtree_index());
+
         // Grab the consensus branch ID for the block's height
         auto consensus = Params().GetConsensus();
         auto consensusBranchId = CurrentEpochBranchId(nHeight, consensus);
@@ -4065,6 +4098,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         std::map<uint160, int32_t> identityExportTransferCount;
         bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_PBAAS;
 
+
+        size_t total_sapling_tx = 0;
         std::vector<PrecomputedTransactionData> txdata;
         txdata.reserve(block.vtx.size()); // Required so that pointers to individual PrecomputedTransactionData don't get invalidated
 
@@ -4690,7 +4725,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 LogPrint("notarization", "importedcurrency %s\nspentcurrencyout %s\nnewgatewaydeposits %s\n",
                                     importedCurrency.ToUniValue().write(1,2).c_str(),
                                     spentCurrencyOut.ToUniValue().write(1,2).c_str(),
-                                    gatewayDeposits.ToUniValue().write(1,2).c_str()); //*/
+                                    gatewayDeposits.ToUniValue().write(1,2).c_str());
 
                                 extraCurrencyOut = gatewayDeposits.CanonicalMap();
                                 gatewayDeposits -= spentCurrencyOut;
@@ -4785,7 +4820,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 LogPrint("notarization", "%s: coinbase tx: %s\n", __func__, jsonTx.write(1,2).c_str());
                 LogPrint("notarization", "%s: coinbase rtxd: %s\n", __func__, rtxd.ToUniValue().write(1,2).c_str());
                 LogPrint("notarization", "%s: nativeFees: %ld, reserve fees: %s\nextra coinbase outputs: %s\n", __func__, nFees, totalReserveTxFees.ToUniValue().write(1,2).c_str(), validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str());
-                //*/
+                //
             }
             else if (!isVerusActive)
             {
@@ -4888,6 +4923,26 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
             BOOST_FOREACH(const OutputDescription &outputDescription, tx.vShieldedOutput) {
                 sapling_tree.append(outputDescription.cm);
+                if (fUpdateSaplingSubtrees) {
+                    auto completeSubtreeRoot = sapling_tree.complete_subtree_root();
+                    if (completeSubtreeRoot.has_value()) {
+                        libzcash::SubtreeData subtree(completeSubtreeRoot->ToRawBytes(), pindex->GetHeight());
+                        view.PushSubtree(SAPLING, subtree);
+                        auto latest = view.GetLatestSubtree(SAPLING);
+
+                        // The latest subtree, according to the view, should now be one
+                        // less than the "current" subtree index according to the tree
+                        // itself, after the append takes place earlier in this loop.
+                        assert(latest.has_value());
+                        assert((latest->index + 1) == sapling_tree.current_subtree_index());
+                    }
+                }
+            }
+
+            //if (tx.GetSaplingBundle().IsPresent()) {
+            // TODO: ensure tx.vShieldedOutput.size() is equivalent to above
+            if (tx.vShieldedOutput.size() > 0) {
+                total_sapling_tx += 1;
             }
 
             vPos.push_back(std::make_pair(tx.GetHash(), pos));
@@ -7370,6 +7425,16 @@ bool static LoadBlockIndexDB()
     pblocktree->ReadFlag("spentindex", fSpentIndex);
     LogPrintf("%s: spent index %s\n", __func__, fSpentIndex ? "enabled" : "disabled");
 
+
+    // Check if lightwalletd enabled
+    bool fLightWalletd = false;
+    pblocktree->ReadFlag("lightwalletd", fLightWalletd);
+    LogPrintf("%s: light wallet daemon %s\n", __func__, fLightWalletd ? "enabled" : "disabled");
+
+    if (fLightWalletd) {
+        fAddressIndex = true;
+    }
+
     // insightexplorer
     // Check whether block explorer features are enabled
     pblocktree->ReadFlag("insightexplorer", fInsightExplorer);
@@ -7524,6 +7589,187 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
     }
 
     LogPrintf("No coin database inconsistencies in last %i blocks (%i transactions)\n", chainActive.Height() - pindexState->GetHeight(), nGoodTransactions);
+
+    return true;
+}
+
+bool RegenerateSubtrees(ShieldedType type, const Consensus::Params& consensusParams)
+{
+    AssertLockHeld(cs_main);
+
+    if (chainActive.Tip() == NULL || chainActive.Tip()->pprev == NULL) {
+        LogPrintf("RegenerateSubtrees: chain is at genesis currently; migration complete\n");
+        return true;
+    }
+
+    // Delete all subtrees in pcoinsTip.
+    pcoinsTip->ResetSubtrees(type);
+
+    Consensus::UpgradeIndex upgrade;
+    if (type == SAPLING) {
+        upgrade = Consensus::UPGRADE_SAPLING;
+    } else {
+        throw std::runtime_error("RegenerateSubtrees: bad shielded pool type");
+    }
+
+    // The search space starts at the activation height of the shielded pool
+    int32_t currentHeight = consensusParams.vUpgrades[upgrade].nActivationHeight;
+    if (currentHeight <= 0) {
+        LogPrintf("RegenerateSubtrees: shielded pool is not active; migration complete\n");
+        return true;
+    }
+
+    // The search space ends at the active chain tip.
+    int chainHeight = chainActive.Tip()->GetHeight();
+
+    LogPrintf("RegenerateSubtrees: current chain height is %d, activation height is %d\n", chainHeight, currentHeight);
+
+    if (currentHeight > chainHeight) {
+        // We don't have any blocks to search through.
+        // The subtrees will be added naturally as the
+        // chain progresses.
+        LogPrintf("RegenerateSubtrees: activation takes place in the future; migration complete\n");
+        return true;
+    }
+
+    // Vector to accumulate the heights of discovered blocks
+    // that complete subtrees.
+    std::vector<int> vHeights;
+
+    libzcash::SubtreeIndex chainSubtreeIndex;
+    libzcash::SubtreeIndex loggingModulus;
+    size_t percentage = 0;
+
+    {
+        auto lookupCurrentSubtreeIndex = [&] (int nHeight) {
+            auto blockIndex = chainActive[nHeight];
+            assert(blockIndex != nullptr);
+
+            // Because these blocks are connected to the active chain
+            // tip, and because we are inspecting blocks where Sapling
+            // is activated, hashFinalSaplingRoot is guaranteed to be non-null.
+            if (type == SAPLING) {
+                SaplingMerkleTree latest_frontier;
+                assert(pcoinsTip->GetSaplingAnchorAt(blockIndex->hashFinalSaplingRoot, latest_frontier));
+                return latest_frontier.current_subtree_index();
+            } else {
+                assert(false);
+            }
+        };
+
+        chainSubtreeIndex = lookupCurrentSubtreeIndex(chainHeight);
+
+        if (chainSubtreeIndex == 0) {
+            // There's nothing to do, because no complete subtrees
+            // exist on chain yet.
+            LogPrintf("RegenerateSubtrees: current subtree is index 0, nothing to do; migration complete\n");
+            return true;
+        }
+
+        // We'll report every ~10% of progress made.
+        loggingModulus = chainSubtreeIndex / 10;
+
+        if (loggingModulus == 0) {
+            loggingModulus = 1;
+        }
+
+        libzcash::SubtreeIndex subtreeIndex = 0;
+        while (currentHeight <= chainHeight) {
+            if ((subtreeIndex % loggingModulus) == 0) {
+                LogPrintf(
+                    "RegenerateSubtrees: Searching for complete subtrees... %d percent complete (%d / %d)\n",
+                    percentage,
+                    subtreeIndex,
+                    chainSubtreeIndex
+                );
+                percentage += 10;
+            }
+            // In this loop we're looking for the completed subtree
+            // with index subtreeIndex (if it exists) somewhere
+            // between currentHeight and chainHeight (inclusive).
+            // We'll first need to find the first block in this
+            // range that has a "current" subtree index one larger,
+            // which implies that block completed the subtree.
+
+            auto searchRange = boost::irange(currentHeight, chainHeight + 1);
+
+            auto result = boost::lower_bound(
+                searchRange,
+                subtreeIndex + 1,
+                [&](int a, libzcash::SubtreeIndex b) {
+                    return lookupCurrentSubtreeIndex(a) < b;
+                }
+            );
+
+            if (result != boost::end(searchRange)) {
+                vHeights.push_back(*result);
+
+                // Search for the next subtree, starting with the
+                // next block.
+                currentHeight = *result + 1;
+                subtreeIndex += 1;
+            } else {
+                break;
+            }
+        }
+    }
+
+    LogPrintf("RegenerateSubtrees: Found all complete subtrees.\n");
+
+    percentage = 0;
+
+    for (size_t subtreeIndex = 0; subtreeIndex < vHeights.size(); subtreeIndex++) {
+        if ((subtreeIndex % loggingModulus) == 0) {
+            LogPrintf(
+                "RegenerateSubtrees: Rebuilding complete subtrees... %d percent complete (%d / %d)\n",
+                percentage,
+                subtreeIndex,
+                chainSubtreeIndex
+            );
+            percentage += 10;
+        }
+
+        int nHeight = vHeights[subtreeIndex];
+
+        auto pindex = chainActive[nHeight];
+        CBlock block;
+        if (!ReadBlockFromDisk(block, pindex, consensusParams)) {
+            LogPrintf("Failed to read block\n");
+            return false;
+        }
+
+        // We'll grab the final frontier from the previous block (which
+        // should have a hashFinalSaplingRoot
+        // because this block completed a 2^16 size subtree!) and append
+        // to it until we complete the subtree.
+        auto pushSapling = [&]() {
+            SaplingMerkleTree sapling_tree;
+            assert(pcoinsTip->GetSaplingAnchorAt(pindex->pprev->hashFinalSaplingRoot, sapling_tree));
+            for (const CTransaction &tx : block.vtx) {
+                for (const auto &outputDescription : tx.vShieldedOutput) {
+                    sapling_tree.append(outputDescription.cm);
+     //               sapling_tree.append(uint256::FromRawBytes(outputDescription.cm));
+
+                    auto completeSubtreeRoot = sapling_tree.complete_subtree_root();
+                    if (completeSubtreeRoot.has_value()) {
+                        libzcash::SubtreeData subtree(completeSubtreeRoot->ToRawBytes(), nHeight);
+                        pcoinsTip->PushSubtree(SAPLING, subtree);
+                        return;
+                    }
+                }
+            }
+
+            // We should not get here; this block should have completed the subtree
+            // and the return statement above should have executed.
+            assert(false);
+        };
+
+        if (type == SAPLING) {
+            pushSapling();
+        } else {
+            assert(false);
+        }
+    }
 
     return true;
 }
@@ -7795,6 +8041,12 @@ bool InitBlockIndex(const CChainParams& chainparams)
     fSpentIndex = true;
     pblocktree->WriteFlag("spentindex", fSpentIndex);
     fprintf(stderr,"fAddressIndex.%d/%d fSpentIndex.%d/%d\n",fAddressIndex,DEFAULT_ADDRESSINDEX,fSpentIndex,DEFAULT_SPENTINDEX);
+
+    pblocktree->WriteFlag("lightwalletd", fExperimentalLightWalletd);
+    if (fExperimentalLightWalletd) {
+        fAddressIndex = true;
+    }
+
     LogPrintf("Initializing databases...\n");
 
     // Only add the genesis block if not reindexing (in which case we reuse the one already on disk)

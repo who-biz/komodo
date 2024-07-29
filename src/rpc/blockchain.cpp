@@ -10,6 +10,7 @@
 #include "crosschain.h"
 #include "base58.h"
 #include "consensus/validation.h"
+#include "experimental_features.h"
 #include "cc/eval.h"
 #include "key_io.h"
 #include "main.h"
@@ -1859,6 +1860,88 @@ UniValue getchaintips(const UniValue& params, bool fHelp)
     return res;
 }
 
+UniValue z_getsubtreesbyindex(const UniValue& params, bool fHelp)
+{
+    std::string disabledMsg = "";
+    if (!fExperimentalLightWalletd) {
+        disabledMsg = experimentalDisabledHelpMsg("z_getsubtreesbyindex", {"lightwalletd"});
+    }
+    if (fHelp || params.size() < 2 || params.size() > 3) {
+        auto strHeight = strprintf("%d", libzcash::TRACKED_SUBTREE_HEIGHT);
+        throw runtime_error(
+            "z_getsubtreesbyindex \"pool\" start_index ( limit )\n"
+            "Returns roots of subtrees of the given pool's note commitment tree. Each value returned\n"
+            "in the `subtrees` field is the Merkle root of a subtree containing 2^"+strHeight+" leaves.\n"
+            + disabledMsg +
+            "\nArguments:\n"
+            "1. \"pool\"        (string, required) The pool from which subtrees should be returned. Either \"sapling\" or \"orchard\".\n"
+            "2. start_index   (numeric, required) The index of the first 2^"+strHeight+"-leaf subtree to return.\n"
+            "2. limit         (numeric, optional) The maximum number of subtree values to return.\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"pool\" : \"sapling|orchard\", (string) The shielded pool to which the subtrees belong\n"
+            "  \"start_index\": n,      (numeric) The index of the first subtree\n"
+            "  \"subtrees\": [          (array) A sequential list of complete subtrees\n"
+            "    {\n"
+            "      \"root\": \"hash\",    (string) Merkle root of the 2^"+strHeight+"-leaf subtree\n"
+            "      \"end_height\": n,   (numeric) height of the block containing the note that completed this subtree\n"
+            "    }, ...\n"
+            "  ]\n"
+            "}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("z_getsubtreesbyindex", "\"sapling\", 0")
+            + HelpExampleRpc("z_getsubtreesbyindex", "\"orchard\", 3, 7")
+        );
+    }
+
+    if (!fExperimentalLightWalletd) {
+        throw JSONRPCError(RPC_MISC_ERROR, "Error: z_getsubtreesbyindex is disabled. "
+            "Run './zcash-cli help z_getsubtreesbyindex' for instructions on how to enable this feature.");
+    }
+
+    auto strPool = params[0].get_str();
+    ShieldedType pool;
+    if (strPool == "sapling") {
+        pool = SAPLING;
+    } else {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Requested pool must be \"sapling\" or \"orchard\"");
+    }
+
+    libzcash::SubtreeIndex startIndex = params[1].get_int();
+    std::optional<uint64_t> limit = std::nullopt;
+    if (params.size() > 2) {
+        limit = params[2].get_int();
+    }
+
+    LOCK(cs_main);
+
+    UniValue subtrees(UniValue::VARR);
+    uint64_t count = 0;
+    for (libzcash::SubtreeIndex index = startIndex; ; index++) {
+        if (limit.has_value() && count >= limit.value()) {
+            break;
+        }
+
+        auto subtreeData = pcoinsTip->GetSubtreeData(pool, index);
+        if (!subtreeData.has_value()) {
+            break;
+        }
+
+        UniValue subtree(UniValue::VOBJ);
+        subtree.pushKV("root", HexStr(subtreeData->root));
+        subtree.pushKV("end_height", subtreeData->nHeight);
+        subtrees.push_back(subtree);
+        count++;
+    }
+
+    UniValue res(UniValue::VOBJ);
+    res.pushKV("pool", strPool);
+    res.pushKV("start_index", startIndex);
+    res.pushKV("subtrees", subtrees);
+
+    return res;
+}
+
 UniValue mempoolInfoToJSON()
 {
     UniValue ret(UniValue::VOBJ);
@@ -1981,6 +2064,7 @@ static const CRPCCommand commands[] =
     { "blockchain",         "getblockheader",         &getblockheader,         true  },
     { "blockchain",         "getchaintips",           &getchaintips,           true  },
     { "blockchain",         "z_gettreestate",         &z_gettreestate,         true  },
+    { "blockchain",         "z_getsubtreesbyindex",   &z_getsubtreesbyindex,   true  },
     { "blockchain",         "getchaintxstats",        &getchaintxstats,        true  },
     { "blockchain",         "getdifficulty",          &getdifficulty,          true  },
     { "blockchain",         "getmempoolinfo",         &getmempoolinfo,         true  },

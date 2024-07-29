@@ -11,6 +11,7 @@
 #include "pow.h"
 #include "uint256.h"
 #include "core_io.h"
+#include "zcash/History.hpp"
 
 #include <stdint.h>
 
@@ -40,6 +41,13 @@ static const char DB_BEST_SAPLING_ANCHOR = 'z';
 static const char DB_FLAG = 'F';
 static const char DB_REINDEX_FLAG = 'R';
 static const char DB_LAST_BLOCK = 'l';
+
+static const char DB_MMR_LENGTH = 'M';
+static const char DB_MMR_NODE = 'm';
+static const char DB_MMR_ROOT = 'r';
+
+static const char DB_SUBTREE_LATEST = 'e';
+static const char DB_SUBTREE_DATA = 'n';
 
 // Zcash defines are slightly different - commenting rather than removing
 // in case there is ever a related error
@@ -128,6 +136,75 @@ uint256 CCoinsViewDB::GetBestAnchor(ShieldedType type) const {
     return hashBestAnchor;
 }
 
+HistoryIndex CCoinsViewDB::GetHistoryLength(uint32_t epochId) const {
+    HistoryIndex historyLength;
+    if (!db.Read(make_pair(DB_MMR_LENGTH, epochId), historyLength)) {
+        // Starting new history
+        historyLength = 0;
+    }
+
+    return historyLength;
+}
+
+HistoryNode CCoinsViewDB::GetHistoryAt(uint32_t epochId, HistoryIndex index) const {
+    HistoryNode mmrNode = {};
+
+    if (index >= GetHistoryLength(epochId)) {
+        throw runtime_error("History data inconsistent - reindex?");
+    }
+
+    if (libzcash::IsV1HistoryTree(epochId)) {
+        // History nodes serialized by `zcashd` versions that were unaware of NU5, used
+        // the previous shorter maximum serialized length. Because we stored this as an
+        // array, we can't just read the current (longer) maximum serialized length, as
+        // it will result in an exception for those older nodes.
+        //
+        // Instead, we always read an array of the older length. This works as expected
+        // for V1 nodes serialized by older clients, while for V1 nodes serialized by
+        // NU5-aware clients this is guaranteed to ignore only trailing zero bytes.
+        std::array<unsigned char, NODE_V1_SERIALIZED_LENGTH> tmpMmrNode;
+        if (!db.Read(make_pair(DB_MMR_NODE, make_pair(epochId, index)), tmpMmrNode)) {
+            throw runtime_error("History data inconsistent (expected node not found) - reindex?");
+        }
+        std::copy(std::begin(tmpMmrNode), std::end(tmpMmrNode), mmrNode.begin());
+    } else {
+        if (!db.Read(make_pair(DB_MMR_NODE, make_pair(epochId, index)), mmrNode)) {
+            throw runtime_error("History data inconsistent (expected node not found) - reindex?");
+        }
+    }
+
+    return mmrNode;
+}
+
+uint256 CCoinsViewDB::GetHistoryRoot(uint32_t epochId) const {
+    uint256 root;
+    if (!db.Read(make_pair(DB_MMR_ROOT, epochId), root))
+    {
+        root = uint256();
+    }
+    return root;
+}
+
+
+std::optional<libzcash::LatestSubtree> CCoinsViewDB::GetLatestSubtree(ShieldedType type) const {
+    libzcash::LatestSubtree latestSubtree;
+    if (!db.Read(make_pair(DB_SUBTREE_LATEST, (uint8_t) type), latestSubtree)) {
+        return std::nullopt;
+    }
+
+    return latestSubtree;
+}
+
+std::optional<libzcash::SubtreeData> CCoinsViewDB::GetSubtreeData(
+        ShieldedType type, libzcash::SubtreeIndex index) const
+{
+    libzcash::SubtreeData subtreeData;
+    if (!db.Read(make_pair(DB_SUBTREE_DATA, make_pair((uint8_t) type, index)), subtreeData)) {
+        return std::nullopt;
+    }
+    return subtreeData;
+}
+
 void BatchWriteNullifiers(CDBBatch& batch, CNullifiersMap& mapToUse, const char& dbChar)
 {
     for (CNullifiersMap::iterator it = mapToUse.begin(); it != mapToUse.end();) {
@@ -162,6 +239,89 @@ void BatchWriteAnchors(CDBBatch& batch, Map& mapToUse, const char& dbChar)
     }
 }
 
+void BatchWriteHistory(CDBBatch& batch, CHistoryCacheMap& historyCacheMap) {
+    for (auto nextHistoryCache = historyCacheMap.begin(); nextHistoryCache != historyCacheMap.end(); nextHistoryCache++) {
+        auto historyCache = nextHistoryCache->second;
+        auto epochId = nextHistoryCache->first;
+
+        // delete old entries since updateDepth
+        for (int i = historyCache.updateDepth + 1; i <= historyCache.length; i++) {
+            batch.Erase(make_pair(DB_MMR_NODE, make_pair(epochId, i)));
+        }
+
+        // replace/append new/updated entries
+        for (auto it = historyCache.appends.begin(); it != historyCache.appends.end(); it++) {
+            batch.Write(make_pair(DB_MMR_NODE, make_pair(epochId, it->first)), it->second);
+        }
+
+        // write new length
+        batch.Write(make_pair(DB_MMR_LENGTH, epochId), historyCache.length);
+
+        // write current root
+        batch.Write(make_pair(DB_MMR_ROOT, epochId), historyCache.root);
+    }
+}
+
+void WriteSubtrees(
+    CDBBatch& batch,
+    ShieldedType type,
+    std::optional<libzcash::LatestSubtree> oldLatestSubtree,
+    std::optional<libzcash::LatestSubtree> newLatestSubtree,
+    const std::vector<libzcash::SubtreeData> &newSubtrees
+)
+{
+    // The number of subtrees we'll need to remove from the database
+    libzcash::SubtreeIndex pops;
+
+    if (!oldLatestSubtree.has_value()) {
+        // Nothing to remove
+        pops = 0;
+        assert(!newLatestSubtree.has_value());
+    } else {
+        if (!newLatestSubtree.has_value()) {
+            // Every subtree must be removed
+            pops = oldLatestSubtree.value().index + 1;
+        } else {
+            // Only remove what's necessary to get us to the
+            // correct index.
+            assert(newLatestSubtree.value().index <= oldLatestSubtree.value().index);
+            pops = oldLatestSubtree.value().index - newLatestSubtree.value().index;
+        }
+    }
+
+    for (libzcash::SubtreeIndex i = 0; i < pops; i++) {
+        batch.Erase(make_pair(DB_SUBTREE_DATA, make_pair((uint8_t) type, oldLatestSubtree.value().index - i)));
+    }
+
+    if (!newSubtrees.empty()) {
+        libzcash::SubtreeIndex cursor_index;
+        if (newLatestSubtree.has_value()) {
+            cursor_index = newLatestSubtree.value().index + 1;
+        } else {
+            cursor_index = 0;
+        }
+
+        for (const libzcash::SubtreeData& subtreeData : newSubtrees) {
+            batch.Write(make_pair(DB_SUBTREE_DATA, make_pair((uint8_t) type, cursor_index)), subtreeData);
+            cursor_index += 1;
+        }
+
+        libzcash::SubtreeData latestSubtreeData = newSubtrees.back();
+
+        // Note: the latest index will be cursor_index - 1 after the final iteration of the loop above.
+        libzcash::LatestSubtree latestSubtree(cursor_index - 1, latestSubtreeData.root, latestSubtreeData.nHeight);
+        batch.Write(make_pair(DB_SUBTREE_LATEST, (uint8_t) type), latestSubtree);
+    } else {
+        // There are no new subtrees from the cache, so newLatestSubtree is the (possibly new) best index.
+        if (newLatestSubtree.has_value()) {
+            batch.Write(make_pair(DB_SUBTREE_LATEST, (uint8_t) type), newLatestSubtree.value());
+        } else {
+            // Delete the entry if it's std::nullopt
+            batch.Erase(make_pair(DB_SUBTREE_LATEST, (uint8_t) type));
+        }
+    }
+}
+
 bool CCoinsViewDB::BatchWrite(CCoinsMap &mapCoins,
                               const uint256 &hashBlock,
                               const uint256 &hashSproutAnchor,
@@ -169,7 +329,12 @@ bool CCoinsViewDB::BatchWrite(CCoinsMap &mapCoins,
                               CAnchorsSproutMap &mapSproutAnchors,
                               CAnchorsSaplingMap &mapSaplingAnchors,
                               CNullifiersMap &mapSproutNullifiers,
-                              CNullifiersMap &mapSaplingNullifiers) {
+                              CNullifiersMap &mapSaplingNullifiers,
+                              CHistoryCacheMap &historyCacheMap,
+                              SubtreeCache &cacheSaplingSubtrees) {
+
+    auto latestSaplingSubtree = GetLatestSubtree(SAPLING);
+
     CDBBatch batch(db);
     size_t count = 0;
     size_t changed = 0;
@@ -191,6 +356,11 @@ bool CCoinsViewDB::BatchWrite(CCoinsMap &mapCoins,
 
     ::BatchWriteNullifiers(batch, mapSproutNullifiers, DB_NULLIFIER);
     ::BatchWriteNullifiers(batch, mapSaplingNullifiers, DB_SAPLING_NULLIFIER);
+    ::BatchWriteHistory(batch, historyCacheMap);
+
+    assert(cacheSaplingSubtrees.initialized);
+
+    WriteSubtrees(batch, SAPLING, latestSaplingSubtree, cacheSaplingSubtrees.parentLatestSubtree, cacheSaplingSubtrees.newSubtrees);
 
     if (!hashBlock.IsNull())
         batch.Write(DB_BEST_BLOCK, hashBlock);
