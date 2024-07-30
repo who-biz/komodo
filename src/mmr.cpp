@@ -244,13 +244,13 @@ uint256 CMMRProof::CheckProof(uint256 hash, bool optimized) const
             case CMerkleBranchBase::BRANCH_MMRBLAKE_NODE:
             {
                 hash = ((CMMRNodeBranch *)pProof)->SafeCheck(hash);
-                //printf("Result from CMMRNodeBranch check: %s\n", hash.GetHex().c_str());
+                printf("Result from CMMRNodeBranch check: %s\n", hash.GetHex().c_str());
                 break;
             }
             case CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE:
             {
                 hash = ((CMMRPowerNodeBranch *)pProof)->SafeCheck(hash);
-                //printf("Result from CMMRPowerNodeBranch check: %s\n", hash.GetHex().c_str());
+                printf("Result from CMMRPowerNodeBranch check: %s\n", hash.GetHex().c_str());
                 break;
             }
             case CMerkleBranchBase::BRANCH_ETH:
@@ -273,7 +273,7 @@ uint64_t CMerkleBranchBase::GetMMRProofIndex(uint64_t pos, uint64_t mmvSize, int
     std::vector<unsigned char> PeakIndexes;
     std::vector<uint64_t> MerkleSizes;
 
-    // printf("%s: pos: %lu, mmvSize: %lu\n", __func__, pos, mmvSize);
+    printf("%s: pos: %lu, mmvSize: %lu\n", __func__, pos, mmvSize);
 
     // find a path from the indicated position to the root in the current view
     if (pos > 0 && pos < mmvSize)
@@ -318,7 +318,7 @@ uint64_t CMerkleBranchBase::GetMMRProofIndex(uint64_t pos, uint64_t mmvSize, int
         uint64_t p = pos;
         for (int l = 0; l < Sizes.size(); l++)
         {
-            // printf("GetProofBits - Bits.size: %lu\n", Bits.size());
+            printf("bp1: GetProofBits - Bits.size: %lu\n", Bits.size());
 
             if (p & 1)
             {
@@ -361,7 +361,7 @@ uint64_t CMerkleBranchBase::GetMMRProofIndex(uint64_t pos, uint64_t mmvSize, int
                     uint64_t layerSize;
                     for (layerNum = -1, layerSize = PeakIndexes.size(); layerNum == -1 || layerSize > 1; layerSize = MerkleSizes[++layerNum])
                     {
-                        // printf("GetProofBits - Bits.size: %lu\n", Bits.size());
+                        printf("bp2: GetProofBits - Bits.size: %lu\n", Bits.size());
                         if (p < (layerSize - 1) || (p & 1))
                         {
                             if (p & 1)
@@ -394,6 +394,6 @@ uint64_t CMerkleBranchBase::GetMMRProofIndex(uint64_t pos, uint64_t mmvSize, int
             }
         }
     }
-    //printf("retindex: %lu\n", retIndex);
+    printf("retindex: %lu\n", retIndex);
     return retIndex;
 }

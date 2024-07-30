@@ -383,11 +383,11 @@ public:
 
         if (index == -1)
         {
-            //printf("returning null 1\n");
+            printf("returning null 1\n");
             return uint256();
         }
 
-        // printf("start SafeCheck branch.size(): %lu, index: %lu, hash: %s\n", branch.size(), index, HashAbbrev(hash).c_str());
+        printf("start SafeCheck branch.size(): %lu, index: %lu, hash: %s\n", branch.size(), index, HashAbbrev(hash).c_str());
         for (auto it(branch.begin()); it != branch.end(); it++)
         {
             HASHALGOWRITER hw(SER_GETHASH, 0);
@@ -401,17 +401,17 @@ public:
                 }
                 hw << *it;
                 hw << hash;
-                //printf("safeCheck: %s:%s\n", it->GetHex().c_str(), hash.GetHex().c_str());
+                printf("bp1: safeCheck: %s:%s\n", it->GetHex().c_str(), hash.GetHex().c_str());
             }
             else
             {
                 hw << hash;
                 hw << *it;
-                //printf("safeCheck: %s:%s\n", hash.GetHex().c_str(), it->GetHex().c_str());
+                printf("bp2: safeCheck: %s:%s\n", hash.GetHex().c_str(), it->GetHex().c_str());
             }
             hash = hw.GetHash();
             index >>= 1;
-            //printf("safeCheck: %s\n", hash.GetHex().c_str());
+            printf("bp3: safeCheck: %s\n", hash.GetHex().c_str());
         }
         return hash;
     }
@@ -908,13 +908,13 @@ public:
             if (height == upperNodes.size())
             {
                 upperNodes.resize(upperNodes.size() + 1);
-                // printf("adding2: upperNodes.size(): %lu, upperNodes[%d].size(): %lu\n", upperNodes.size(), height, height && upperNodes.size() ? upperNodes[height-1].size() : 0);
+                printf("adding2: upperNodes.size(): %lu, upperNodes[%d].size(): %lu\n", upperNodes.size(), height, height && upperNodes.size() ? upperNodes[height-1].size() : 0);
             }
 
             uint32_t curSizeAbove = upperNodes[height].size();
 
             // if we need to add an element to the vector above us, do it
-            // printf("layerSize: %u, newSizeAbove: %u, curSizeAbove: %u\n", layerSize, newSizeAbove, curSizeAbove);
+            printf("layerSize: %u, newSizeAbove: %u, curSizeAbove: %u\n", layerSize, newSizeAbove, curSizeAbove);
             if (!(layerSize & 1) && newSizeAbove > curSizeAbove)
             {
                 uint32_t idx = layerSize - 2;

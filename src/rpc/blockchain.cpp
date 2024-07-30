@@ -1904,7 +1904,7 @@ UniValue z_getsubtreesbyindex(const UniValue& params, bool fHelp)
     if (strPool == "sapling") {
         pool = SAPLING;
     } else {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Requested pool must be \"sapling\" or \"orchard\"");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Requested pool must be \"sapling\"");
     }
 
     libzcash::SubtreeIndex startIndex = params[1].get_int();

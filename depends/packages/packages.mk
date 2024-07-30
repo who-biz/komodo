@@ -1,10 +1,8 @@
-rust_packages := rust librustzcash
-
 ifeq ($(build_os),darwin)
 	zcash_packages := libsodium
 else
 	proton_packages := proton
-	zcash_packages := libsodium
+	zcash_packages := libsodium rustcxx
 endif
 
 rust_crates := \
@@ -41,9 +39,9 @@ rust_crates := \
   crate_winapi_i686_pc_windows_gnu \
   crate_winapi \
   crate_winapi_x86_64_pc_windows_gnu
-rust_packages := rust $(rust_crates) librustzcash
-native_packages := native_ccache
+native_packages := native_ccache native_rust native_cxxbridge #native_cmake
+rust_packages := $(rust_crates)
 
 wallet_packages=bdb
 
-packages := boost openssl libevent zeromq $(zcash_packages) zlib libarchive libcurl googletest #googlemock
+packages := boost openssl libevent zeromq $(zcash_packages) zlib libarchive libcurl googletest libcxx #googlemock

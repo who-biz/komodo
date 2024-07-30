@@ -28,6 +28,8 @@ LEVELDB_CPPFLAGS += -I$(srcdir)/leveldb/include
 LEVELDB_CPPFLAGS += -I$(srcdir)/leveldb/helpers/memenv
 LIBLEVELDB += $(builddir)/leveldb/libleveldb.a
 LIBMEMENV  += $(builddir)/leveldb/libmemenv.a
+LIBCXXBRIDGE=libcxxbridge.a
+LIBRUSTZCASH=$(top_builddir)/target/$(RUST_TARGET)/release/librustzcash.la
 
 # NOTE: This dependency is not strictly necessary, but without it make may try to build both in parallel, which breaks the LevelDB build system in a race
 $(LIBLEVELDB): $(LIBMEMENV)
@@ -39,6 +41,9 @@ $(LIBLEVELDB) $(LIBMEMENV):
 endif
 
 BITCOIN_CONFIG_INCLUDES=-I$(builddir)/config
+BITCOIN_CONFIG_INCLUDES += -I$(srcdir)/rust/include
+BITCOIN_CONFIG_INCLUDES += -I$(srcdir)/rust/gen/include
+
 BITCOIN_INCLUDES=-I$(builddir) -I$(builddir)/obj $(BDB_CPPFLAGS) $(BOOST_CPPFLAGS) $(LEVELDB_CPPFLAGS) $(CRYPTO_CFLAGS) $(SSL_CFLAGS)
 
 BITCOIN_INCLUDES += -I$(srcdir)/secp256k1/include
@@ -47,6 +52,121 @@ BITCOIN_INCLUDES += -I$(srcdir)/cryptoconditions/src/include/falcon
 BITCOIN_INCLUDES += -I$(srcdir)/cryptoconditions/src
 BITCOIN_INCLUDES += -I$(srcdir)/cryptoconditions/src/asn
 BITCOIN_INCLUDES += -I$(srcdir)/univalue/include
+BITCOIN_INCLUDES += -I$(srcdir)/rust/include
+BITCOIN_INCLUDES += -I$(srcdir)/rust/gen/include
+
+CXXBRIDGE_RS = \
+  rust/src/blake2b.rs \
+  rust/src/ed25519.rs \
+  rust/src/equihash.rs \
+  rust/src/history.rs \
+  rust/src/init.rs \
+  rust/src/random.rs \
+  rust/src/sapling/spec.rs \
+  rust/src/sapling/zip32.rs \
+  rust/src/sprout.rs \
+  rust/src/streams.rs \
+  rust/src/bridge.rs
+CXXBRIDGE_H = \
+  rust/gen/include/rust/blake2b.h \
+  rust/gen/include/rust/ed25519.h \
+  rust/gen/include/rust/equihash.h \
+  rust/gen/include/rust/history.h \
+  rust/gen/include/rust/init.h \
+  rust/gen/include/rust/random.h \
+  rust/gen/include/rust/sapling/spec.h \
+  rust/gen/include/rust/sapling/zip32.h \
+  rust/gen/include/rust/sprout.h \
+  rust/gen/include/rust/streams.h \
+  rust/gen/include/rust/bridge.h
+CXXBRIDGE_CPP = \
+  rust/gen/src/blake2b.cpp \
+  rust/gen/src/ed25519.cpp \
+  rust/gen/src/equihash.cpp \
+  rust/gen/src/history.cpp \
+  rust/gen/src/init.cpp \
+  rust/gen/src/random.cpp \
+  rust/gen/src/sapling/spec.cpp \
+  rust/gen/src/sapling/zip32.cpp \
+  rust/gen/src/sprout.cpp \
+  rust/gen/src/streams.cpp \
+  rust/gen/src/bridge.cpp
+
+# We add a rust/cxx.h include to indicate that we provide this (via the rustcxx depends
+# package), so that cxxbridge doesn't include it within the generated headers and code.
+CXXBRIDGE_OPTS = -i rust/cxx.h
+
+$(CXXBRIDGE_RS): ;
+$(CXXBRIDGE_H) $(CXXBRIDGE_CPP): $(CXXBRIDGE_RS)
+	@$(MKDIR_P) $(@D)
+	$(AM_V_GEN)$(CXXBRIDGE) $(CXXBRIDGE_OPTS) $(basename $(patsubst rust/gen/include/rust/%,rust/src/%,$(patsubst rust/gen/src/%,rust/src/%,$@))).rs -o $@
+
+# We pass through CC etc. flags so they are available to Rust dependencies that internally
+# compile C or C++ code with the `cc` crate.
+#
+# We depend on the secp256k1 crate for some logic on the Rust side of the FFI. This crate
+# is a wrapper around libsecp256k1, which we already vendor in our code; the crate vendors
+# its own copy with non-colliding symbols. To ensure that we only use a single version of
+# libsecp256k1, we disable symbol renaming in the secp256k1-sys crate  so it links to the
+# same library as the C++ code.
+# - Note that this does not prevent the secp256k1-sys vendored code from being built; this
+#   requires https://github.com/rust-bitcoin/rust-secp256k1/issues/380 to be addressed.
+RUST_ENV_VARS = \
+  RUSTC="$(RUSTC)" \
+  RUSTFLAGS="--cfg=rust_secp_no_symbol_renaming -L native=$(abs_top_srcdir)/src/secp256k1/.libs" \
+  CC="$(CC)" \
+  CFLAGS="$(CFLAGS)" \
+  CXX="$(CXX)" \
+  CXXFLAGS="$(CXXFLAGS)" \
+  TERM=dumb
+RUST_BUILD_OPTS = --release --target $(RUST_TARGET) --manifest-path $(top_srcdir)/Cargo.toml
+
+rust_verbose = $(rust_verbose_@AM_V@)
+rust_verbose_ = $(rust_verbose_@AM_DEFAULT_V@)
+rust_verbose_0 = @echo "  RUST     $@";
+
+cargo_verbose = $(cargo_verbose_@AM_V@)
+cargo_verbose_ = $(cargo_verbose_@AM_DEFAULT_V@)
+cargo_verbose_1 = --verbose
+
+if ENABLE_ONLINE_RUST
+# Ensure that .cargo/config.toml (or the older .cargo/config) does not exist.
+CARGO_CONFIGURED = $(top_srcdir)/.cargo/.configured-for-online
+$(CARGO_CONFIGURED):
+	$(AM_V_at)rm -f $(top_srcdir)/.cargo/.configured-for-offline $(top_srcdir)/.cargo/config.toml
+	$(AM_V_at)rm -f $(top_srcdir)/.cargo/config
+	$(AM_V_at)touch $@
+
+else
+# Enable dependency vendoring
+RUST_BUILD_OPTS += --locked --offline
+
+CARGO_CONFIGURED = $(top_srcdir)/.cargo/.configured-for-offline
+$(CARGO_CONFIGURED): $(top_srcdir)/.cargo/config.toml.offline
+	$(AM_V_at)rm -f $(top_srcdir)/.cargo/.configured-for-online
+	$(AM_V_at)rm -f $(top_srcdir)/.cargo/config
+	$(AM_V_at)cp $< $(top_srcdir)/.cargo/config.toml
+	$(AM_V_at)echo "directory = \"$(RUST_VENDORED_SOURCES)\"" >>$(top_srcdir)/.cargo/config.toml
+	$(AM_V_at)touch $@
+endif
+
+cargo-build: $(CARGO_CONFIGURED) $(LIBSECP256K1)
+	$(rust_verbose)$(RUST_ENV_VARS) $(CARGO) build $(RUST_BUILD_OPTS) $(cargo_verbose)
+
+cargo-build-lib: cargo-build
+
+cargo-build-bins: cargo-build
+
+$(LIBRUSTZCASH): cargo-build-lib
+	$(AM_V_at)$(MKDIR_P) $(@D)/.libs
+	$(AM_V_at)echo '# $(@F) - a libtool library file' >$@
+	$(AM_V_at)echo "# Generated by src/Makefile.am for libtool" >>$@
+	$(AM_V_at)echo "dlname=''" >>$@
+	$(AM_V_at)echo "library_names=''" >>$@
+	$(AM_V_at)echo "old_library='../$(basename $(@F)).a'" >>$@
+	$(AM_V_at)echo "inherited_linker_flags=''" >>$@
+	$(AM_V_at)echo "installed=no" >>$@
+	$(AM_V_at)echo "shouldnotlink=no" >>$@
 
 LIBBITCOIN_SERVER=libbitcoin_server.a -lcurl -larchive
 LIBBITCOIN_WALLET=libbitcoin_wallet.a
@@ -94,6 +214,7 @@ EXTRA_LIBRARIES += \
   $(LIBBITCOIN_COMMON) \
   $(LIBBITCOIN_SERVER) \
   $(LIBBITCOIN_CLI) \
+  $(LIBCXXBRIDGE)\
     libzcash.a \
     libtls.a
 
@@ -141,7 +262,7 @@ LIBZCASH_H = \
   zcash/address/zip32.cpp \
   zcash/address/zip32.h
 
-.PHONY: FORCE check-symbols check-security
+.PHONY: FORCE cargo-build-lib cargo-build-bins check-symbols check-security
 # bitcoin core #
 BITCOIN_CORE_H = \
   addressindex.h \
@@ -291,8 +412,17 @@ obj/build.h: FORCE
 	$(abs_top_srcdir)
 libbitcoin_util_a-clientversion.$(OBJEXT): obj/build.h
 
+libcxxbridge_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES) $(EVENT_CFLAGS) $(EVENT_PTHREADS_CFLAGS)
+libcxxbridge_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
+libcxxbridge_a_SOURCES = \
+  $(CXXBRIDGE_CPP) \
+  $(CXXBRIDGE_H) \
+  zcash/cache.cpp \
+  zcash/cache.h
+
 # server: zcashd
-libbitcoin_server_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES) $(EVENT_CFLAGS) $(EVENT_PTHREADS_CFLAGS)
+libbitcoin_server_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES) $(EVENT_CFLAGS) $(EVENT_PTHREADS_CFLAGS) -I$(builddir)/obj -I$(srcdir)/rust/include -I$(srcdir)/rust/gen/include
+
 libbitcoin_server_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 libbitcoin_server_a_SOURCES = \
   sendalert.cpp \
@@ -372,6 +502,7 @@ libbitcoin_server_a_SOURCES = \
   txdb.cpp \
   txmempool.cpp \
   validationinterface.cpp \
+  $(libcxxbridge_a_SOURCES) \
   $(BITCOIN_CORE_H) \
   $(LIBZCASH_H) \
   $(LIBTLS_H)
@@ -543,6 +674,7 @@ libbitcoin_common_a_SOURCES = \
   veruslaunch.cpp \
   transaction_builder.cpp \
   utiltest.cpp \
+  $(libcxxbridge_a_SOURCES) \
   $(BITCOIN_CORE_H) \
   $(LIBZCASH_H)
 
@@ -632,9 +764,11 @@ verusd_LDADD += \
   $(ZMQ_LIBS) \
   $(PROTON_LIBS) \
   $(LIBBITCOIN_CRYPTO) \
+  $(LIBCXXBRIDGE) \
   $(LIBVERUS_CRYPTO) \
   $(LIBVERUS_PORTABLE_CRYPTO) \
-  $(LIBZCASH_LIBS)
+  $(LIBZCASH_LIBS) \
+  $(LIBRUSTZCASH)
 
 if ENABLE_PROTON
 verusd_LDADD += $(LIBBITCOIN_PROTON) $(PROTON_LIBS)
@@ -666,6 +800,7 @@ verus_LDADD = \
 	$(LIBBITCOIN_CLI) \
 	$(LIBUNIVALUE) \
 	$(LIBBITCOIN_UTIL) \
+	$(LIBCXXBRIDGE) \
 	$(BOOST_LIBS) \
 	$(SSL_LIBS) \
 	$(CRYPTO_LIBS) \
@@ -675,7 +810,8 @@ verus_LDADD = \
 	$(LIBBITCOIN_CRYPTO) \
 	$(LIBVERUS_CRYPTO) \
 	$(LIBVERUS_PORTABLE_CRYPTO) \
-	$(LIBZCASH_LIBS)
+	$(LIBZCASH_LIBS) \
+	$(LIBRUSTZCASH)
 
 if ENABLE_WALLET
 wallet_utility_LDADD = \
@@ -711,6 +847,7 @@ verus_tx_LDADD = \
   $(BOOST_LIBS) \
   $(LIBBITCOIN_COMMON) \
   $(LIBBITCOIN_UTIL) \
+  $(LIBCXXBRIDGE) \
   $(EVENT_LIBS) \
   $(LIBSECP256K1) \
   $(LIBZCASH) \
@@ -792,7 +929,7 @@ CLEANFILES = leveldb/libleveldb.a leveldb/libmemenv.a *.gcda *.gcno */*.gcno wal
 
 DISTCLEANFILES = obj/build.h
 
-EXTRA_DIST = leveldb
+EXTRA_DIST = leveldb rust
 
 clean-local:
 	-$(MAKE) -C leveldb clean
