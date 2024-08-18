@@ -209,6 +209,12 @@ SaplingPaymentAddress CWallet::GenerateNewSaplingZKey()
     if (!GetHDSeed(seed))
         throw std::runtime_error("CWallet::GenerateNewSaplingZKey(): HD seed not found");
 
+    RawHDSeed rawseed = seed.RawSeed();
+    for (int i = 0; i < (rawseed.size()-1); i++)
+    {
+        printf("%02x", rawseed[i]);
+    }
+    printf("\n");
     auto m = libzcash::SaplingExtendedSpendingKey::Master(seed);
     uint32_t bip44CoinType = Params().BIP44CoinType();
 
