@@ -210,6 +210,7 @@ SaplingPaymentAddress CWallet::GenerateNewSaplingZKey()
         throw std::runtime_error("CWallet::GenerateNewSaplingZKey(): HD seed not found");
 
     RawHDSeed rawseed = seed.RawSeed();
+    printf("RawHDSeed:\n");
     for (int i = 0; i < (rawseed.size()-1); i++)
     {
         printf("%02x", rawseed[i]);
