@@ -90,12 +90,12 @@ public:
         }
         if (Check(&pbegin[0])) {
             memcpy(vch, (unsigned char*)&pbegin[0], 32);
-            printf("SecretKey:\n");
+            /*printf("SecretKey:\n");
             for (int i = 0; i < 32; i++)
             {
                 printf("%02X", vch[i]);
             }
-            printf("\n");
+            printf("\n");*/
             fValid = true;
             fCompressed = fCompressedIn;
         } else {

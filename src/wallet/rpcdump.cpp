@@ -222,6 +222,15 @@ UniValue importprivkey(const UniValue& params, bool fHelp)
     CKey key = DecodeSecret(strSecret);
     if (!key.IsValid()) throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid private key encoding");
 
+    std::vector<unsigned char> vch(key.begin(), key.end());
+
+    printf("SecretKey:\n");
+    for (int i = 0; i < vch.size(); i++)
+    {
+         printf("%02X", vch[i]);
+    }
+    printf("\n");
+
     CPubKey pubkey = key.GetPubKey();
     assert(key.VerifyPubKey(pubkey));
     CKeyID vchAddress = pubkey.GetID();
